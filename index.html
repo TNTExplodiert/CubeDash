@@ -128,7 +128,7 @@ let diff = DIFFS[2];
 let best = 0; try { best = parseInt(localStorage.getItem('cubeDashBest')) || 0; } catch (e) {}
 
 let player, obstacles, orbs, particles, trail, baseSpeed, speedMult, speed, score, state, spawnTimer, orbTimer, speedTimer, padTimer, hue, modeIndex, lastModeSwitch, grace, lastGapTop, lastSpacing;
-let holding = false, infoOpen = false, showHitboxes = false;
+let holding = false, effHold = false, infoOpen = false, showHitboxes = false;
 
 const GRAVITY = 0.9, JUMP = -15;
 const ROBOT_JUMP = -12.5, ROBOT_HOLD = 16;
@@ -223,6 +223,11 @@ function spawn() {
       if (Math.random() < 0.7) obstacles.push({ type: 'spike', x: cx, w: 40, h: 40, ceil: true });
       else { obstacles.push({ type: 'spike', x: cx, w: 40, h: 40, ceil: true }); obstacles.push({ type: 'spike', x: cx + 44, w: 40, h: 40, ceil: true }); }
     }
+  } else if (player.mode === 'spider') {
+    // spider clings to floor or ceiling, so the gap must touch one of them
+    const gap = diff.gap, floor = Math.random() < 0.5;
+    obstacles.push({ type: 'bar', x: W + 40, w: 42, y: floor ? CEIL : CEIL + gap, h: GROUND - CEIL - gap });
+    lastGapTop = floor ? GROUND - gap : CEIL;
   } else {
     const gap = player.mode === 'wave' ? Math.max(105, diff.gap - 35) : diff.gap;
     const minTop = CEIL + 25, maxTop = Math.max(minTop, GROUND - gap - 70);
@@ -296,12 +301,60 @@ function groundLand() {
   }
 }
 
+// ----- auto difficulty pilot ----------------------------------------------
+// center of the next bar-gap ahead of the player (null if none spawned yet)
+function nextGapCenter() {
+  let bx = Infinity;
+  for (const o of obstacles) if (o.type === 'bar' && o.x + o.w > player.x && o.x < bx) bx = o.x;
+  if (bx === Infinity) return null;
+  let gTop = CEIL, gBot = GROUND;
+  for (const o of obstacles) if (o.type === 'bar' && Math.abs(o.x - bx) < 2) {
+    if (o.y <= CEIL + 1) gTop = Math.max(gTop, o.y + o.h); else gBot = Math.min(gBot, o.y);
+  }
+  return (gTop + gBot) / 2;
+}
+
+// drives the player in Auto difficulty. Returns a virtual "hold" for the
+// flying modes, or null when there is nothing to steer this frame.
+function autoPilot() {
+  const s = player.size, m = player.mode, gd = player.gravityDir;
+  if (GROUND_MODES.has(m)) {
+    // hop hazards on whichever surface gravity sticks us to
+    if (!player.onGround) return null;
+    for (const o of obstacles) {
+      const d = o.x - (player.x + s);
+      const threat = gd > 0 ? ((o.type === 'spike' && !o.ceil) || o.type === 'block') : (o.type === 'spike' && o.ceil);
+      if (threat && d > 0 && d < 95) { jumpNow(); break; }
+    }
+    return null;
+  }
+  const c = nextGapCenter();
+  if (c === null) return null;
+  const cy = player.y + s / 2;
+  if (m === 'ball') {            // flip gravity toward the gap
+    if (gd > 0 && cy > c + 25) { player.gravityDir = -1; player.onGround = false; }
+    else if (gd < 0 && cy < c - 25) { player.gravityDir = 1; player.onGround = false; }
+    return null;
+  }
+  if (m === 'spider') {          // ride the surface the gap touches
+    const want = c > (CEIL + GROUND) / 2 ? 1 : -1;
+    if (gd !== want) { player.gravityDir = want; spiderTeleport(); }
+    return null;
+  }
+  return cy > c;                 // ship / wave / swing: hold to rise toward the gap
+}
+
 // ----- update -------------------------------------------------------------
 function update() {
   if (state !== 'play') return;
   score += 1; baseSpeed += diff.ramp; speed = baseSpeed * speedMult; hue = (hue + 0.4) % 360;
   if (grace > 0) grace--;
-  const s = player.size, m = player.mode, gd = player.gravityDir;
+  const s = player.size, m = player.mode;
+  // Auto difficulty: let the autopilot jump, steer & flip toward the gaps
+  let hold = holding;
+  if (diff.inv) { const ah = autoPilot(); if (ah !== null) hold = holding || ah; }
+  effHold = hold;
+  const gd = player.gravityDir;
 
   if (m === 'cube') {
     player.vy += GRAVITY * gd; player.y += player.vy;
@@ -316,11 +369,11 @@ function update() {
     groundLand();
     if (player.onGround && holding) jumpNow();           // hold = keep jumping
   } else if (m === 'ship') {
-    player.vy += holding ? -SHIP_THRUST : SHIP_GRAV; player.vy = Math.max(-SHIP_MAX, Math.min(SHIP_MAX, player.vy)); player.y += player.vy;
+    player.vy += hold ? -SHIP_THRUST : SHIP_GRAV; player.vy = Math.max(-SHIP_MAX, Math.min(SHIP_MAX, player.vy)); player.y += player.vy;
     if (player.y + s > GROUND) { player.y = GROUND - s; player.vy = 0; } if (player.y < CEIL) { player.y = CEIL; player.vy = 0; }
     player.rot = player.vy * 0.05;
   } else if (m === 'wave') {
-    player.vy = holding ? -WAVE_SPEED : WAVE_SPEED; player.y += player.vy; player.rot = holding ? -Math.PI / 4 : Math.PI / 4;
+    player.vy = hold ? -WAVE_SPEED : WAVE_SPEED; player.y += player.vy; player.rot = hold ? -Math.PI / 4 : Math.PI / 4;
     if (player.y + s > GROUND) player.y = GROUND - s; if (player.y < CEIL) player.y = CEIL;
     trail.push({ x: player.x + s / 2, y: player.y + s / 2, life: 1, h: hue });
   } else if (m === 'ball') {
@@ -332,17 +385,9 @@ function update() {
   } else if (m === 'spider') {
     player.y = gd > 0 ? GROUND - s : CEIL;
   } else if (m === 'swing') {
-    player.vy += SWING_GRAV * (holding ? -1 : 1); player.vy = Math.max(-SWING_MAX, Math.min(SWING_MAX, player.vy)); player.y += player.vy;
+    player.vy += SWING_GRAV * (hold ? -1 : 1); player.vy = Math.max(-SWING_MAX, Math.min(SWING_MAX, player.vy)); player.y += player.vy;
     if (player.y + s > GROUND) { player.y = GROUND - s; player.vy = 0; } if (player.y < CEIL) { player.y = CEIL; player.vy = 0; }
     player.rot = player.vy * 0.05;
-  }
-
-  // Auto difficulty: hop floor hazards automatically so the run (mostly) plays itself
-  if (diff.inv && (m === 'cube' || m === 'robot') && player.onGround) {
-    for (const o of obstacles) {
-      const d = o.x - (player.x + s);
-      if (((o.type === 'spike' && !o.ceil) || o.type === 'block') && d > 0 && d < 95) { jumpNow(); break; }
-    }
   }
 
   for (const o of obstacles) {
@@ -474,7 +519,7 @@ function drawPlayer() {
   ctx.fillStyle = `hsl(${hue}, 85%, 60%)`; ctx.strokeStyle = '#fff'; ctx.lineWidth = 3;
   if (m === 'wave') { ctx.beginPath(); ctx.moveTo(-s * .35, -s * .35); ctx.lineTo(s * .35, 0); ctx.lineTo(-s * .35, s * .35); ctx.closePath(); ctx.fill(); ctx.stroke(); }
   else if (m === 'ball') { ctx.beginPath(); ctx.arc(0, 0, s / 2, 0, Math.PI * 2); ctx.fill(); ctx.stroke(); ctx.strokeStyle = 'rgba(255,255,255,.8)'; ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(s / 2, 0); ctx.stroke(); }
-  else if (m === 'ship') { ctx.beginPath(); ctx.moveTo(-s / 2, s / 3); ctx.lineTo(s / 2, 0); ctx.lineTo(-s / 2, -s / 3); ctx.closePath(); ctx.fill(); ctx.stroke(); if (holding) { ctx.fillStyle = `hsl(${(hue + 30) % 360},90%,60%)`; ctx.beginPath(); ctx.moveTo(-s / 2, 0); ctx.lineTo(-s, (Math.random() - .5) * 10); ctx.lineTo(-s / 2, 8); ctx.closePath(); ctx.fill(); } }
+  else if (m === 'ship') { ctx.beginPath(); ctx.moveTo(-s / 2, s / 3); ctx.lineTo(s / 2, 0); ctx.lineTo(-s / 2, -s / 3); ctx.closePath(); ctx.fill(); ctx.stroke(); if (effHold) { ctx.fillStyle = `hsl(${(hue + 30) % 360},90%,60%)`; ctx.beginPath(); ctx.moveTo(-s / 2, 0); ctx.lineTo(-s, (Math.random() - .5) * 10); ctx.lineTo(-s / 2, 8); ctx.closePath(); ctx.fill(); } }
   else if (m === 'spider') { ctx.fillRect(-s / 2, -s / 2, s, s); ctx.strokeRect(-s / 2, -s / 2, s, s); ctx.strokeStyle = 'rgba(255,255,255,.7)'; ctx.lineWidth = 2; for (const dx of [-1, 1]) for (const dy of [-1, 1]) { ctx.beginPath(); ctx.moveTo(dx * s / 2, dy * s / 3); ctx.lineTo(dx * s * .8, dy * s * .7); ctx.stroke(); } }
   else if (m === 'swing') { ctx.beginPath(); ctx.moveTo(0, -s / 2); ctx.lineTo(s / 2, 0); ctx.lineTo(0, s / 2); ctx.lineTo(-s / 2, 0); ctx.closePath(); ctx.fill(); ctx.stroke(); }
   else { ctx.fillRect(-s / 2, -s / 2, s, s); ctx.strokeRect(-s / 2, -s / 2, s, s); ctx.fillStyle = 'rgba(255,255,255,.85)'; if (m === 'robot') ctx.fillRect(-s / 2 + 7, -s / 2 + 9, s - 14, 7); else ctx.fillRect(-s / 2 + 8, -s / 2 + 8, s / 3, s / 3); }
