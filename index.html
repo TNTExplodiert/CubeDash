@@ -527,7 +527,7 @@ for (const tgt of [window, document, cv]) { tgt.addEventListener('keydown', keyD
 cv.addEventListener('mousedown', pointerDown);
 window.addEventListener('mouseup', release);
 cv.addEventListener('touchstart', e => pointerDown(e), { passive: false });
-window.addEventListener('touchend', e => { e.preventDefault(); release(); }, { passive: false });
+window.addEventListener('touchend', e => { if (state !== 'menu' && !infoOpen) e.preventDefault(); release(); }, { passive: false });
 document.getElementById('infoClose').addEventListener('click', closeInfo);
 window.addEventListener('blur', release);
 
