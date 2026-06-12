@@ -10,12 +10,12 @@
     background: #0c0c18; font-family: 'Segoe UI', system-ui, sans-serif;
     user-select: none; -webkit-user-select: none; touch-action: manipulation;
   }
-  #wrap { display: flex; align-items: center; justify-content: center; height: 100%; }
-  canvas { background: #11112a; box-shadow: 0 0 40px rgba(80,120,255,.4); border-radius: 8px;
-    max-width: 100vw; max-height: 100vh; outline: none; }
+  #wrap { position: fixed; inset: 0; }
+  canvas { position: absolute; inset: 0; width: 100%; height: 100%; background: #11112a; outline: none; display: block; }
   #hint {
-    position: fixed; top: 12px; left: 50%; transform: translateX(-50%);
-    color: #9fb4ff; font-size: 13px; letter-spacing: .4px; opacity: .85; text-align: center;
+    position: fixed; top: 10px; left: 50%; transform: translateX(-50%);
+    color: #9fb4ff; font-size: 13px; letter-spacing: .4px; opacity: .85; text-align: center; z-index: 6;
+    pointer-events: none; max-width: 96vw;
   }
   #menu { position: fixed; inset: 0; display: none; align-items: center; justify-content: center;
     background: rgba(8,8,20,.92); z-index: 8; }
@@ -27,39 +27,47 @@
     color: #10101f; cursor: pointer; box-shadow: 0 3px 12px rgba(0,0,0,.4); transition: transform .08s; }
   #diffBtns button:hover { transform: scale(1.04); }
   #diffBtns button small { display: block; font-size: 11px; font-weight: 600; opacity: .7; }
-  #menu .foot { display: block; margin-top: 18px; color: #7e8ac0; font-size: 13px; }
-  #info { position: fixed; inset: 0; display: none; align-items: center; justify-content: center;
+  #menu .mbtn { margin-top: 14px; background: #2a2a55; color: #dfe6ff; border: 1px solid #4a4a8a; border-radius: 8px;
+    padding: 9px 16px; font-size: 14px; cursor: pointer; }
+  #menu .mbtn:hover { background: #34346a; }
+  #menu .foot { display: block; margin-top: 16px; color: #7e8ac0; font-size: 13px; }
+  #info, #settings { position: fixed; inset: 0; display: none; align-items: center; justify-content: center;
     background: rgba(6,6,16,.85); z-index: 10; padding: 18px; box-sizing: border-box; }
-  #info .card { background: #161630; border: 1px solid #3a3a6a; border-radius: 12px; max-width: 560px;
+  #info .card, #settings .card { background: #161630; border: 1px solid #3a3a6a; border-radius: 12px; max-width: 560px;
     width: 100%; max-height: 86vh; overflow: auto; padding: 22px 26px; color: #dfe6ff;
     box-shadow: 0 0 40px rgba(80,120,255,.4); }
-  #info h2 { margin: 0 0 6px; color: #fff; }
-  #info h3 { margin: 16px 0 6px; color: #9fb4ff; font-size: 14px; letter-spacing: .5px; text-transform: uppercase; }
+  #info h2, #settings h2 { margin: 0 0 6px; color: #fff; }
+  #info h3, #settings h3 { margin: 16px 0 6px; color: #9fb4ff; font-size: 14px; letter-spacing: .5px; text-transform: uppercase; }
   #info p, #info li { font-size: 14px; line-height: 1.55; }
   #info ul { margin: 6px 0; padding-left: 18px; }
   #info .dot { display: inline-block; width: 11px; height: 11px; border-radius: 50%; margin-right: 6px;
     vertical-align: middle; border: 1px solid rgba(255,255,255,.4); }
-  #info button { margin-top: 18px; background: #4a5ab0; color: #fff; border: none; border-radius: 8px;
+  #info button, #settings button { margin-top: 18px; background: #4a5ab0; color: #fff; border: none; border-radius: 8px;
     padding: 10px 18px; font-size: 15px; cursor: pointer; }
-  #info button:hover { background: #5a6ad0; }
+  #info button:hover, #settings button:hover { background: #5a6ad0; }
+  #settings .grid { display: flex; flex-wrap: wrap; }
+  #settings label { display: inline-flex; align-items: center; gap: 7px; font-size: 14px; margin: 5px 14px 5px 0; cursor: pointer; min-width: 110px; }
+  #settings input { width: 17px; height: 17px; accent-color: #6a7ad0; }
 </style>
 </head>
 <body>
-<div id="hint">SPACE / W / ↑ / CLICK / TAP &nbsp;•&nbsp; tap = jump/flip/orb, HOLD = auto-jump / fly</div>
+<div id="hint">SPACE / W / ↑ / CLICK / TAP &nbsp;•&nbsp; tap = jump/flip/orb · HOLD = fly · E = bot on/off · F = hitboxes · Esc = menu</div>
 <div id="wrap"><canvas id="c" width="900" height="500" tabindex="0"></canvas></div>
 <div id="menu"><div class="mcard">
   <h1>CUBE DASH</h1>
   <p>Choose your difficulty</p>
   <div id="diffBtns"></div>
-  <span class="foot">Best: <b id="menuBest">0</b> &nbsp;·&nbsp; tap = jump · hold = fly · F = hitboxes · Esc = menu</span>
+  <button id="setBtn" class="mbtn">⚙ Settings</button>
+  <span class="foot">Best: <b id="menuBest">0</b> &nbsp;·&nbsp; tap = jump · hold = fly · E = bot · F = hitboxes · Esc = menu</span>
 </div></div>
 <div id="info"><div class="card">
   <h2>Cube Dash — How to Play</h2>
   <p>Survive as long as you can. Fly through <b>portals</b> to change game mode. Your best score is saved automatically.</p>
   <h3>Controls</h3>
   <ul>
-    <li><b>Tap</b> (Space / W / ↑ / Click / Tap): jump, flip, or use an orb you're touching.</li>
-    <li><b>Hold</b>: auto-jump in Cube/Robot, or fly &amp; steer in Ship, Wave &amp; Swing.</li>
+    <li><b>Tap</b> (Space / W / ↑ / Click / Tap): jump, flip, flap, or use an orb you're touching.</li>
+    <li><b>Hold</b>: auto-jump in Cube/Robot, fly &amp; steer in Ship/Wave/Swing, or ride a dash orb.</li>
+    <li><b>E</b>: toggle the <b>bot</b> — let the robot play, or take over yourself (any difficulty).</li>
   </ul>
   <h3>Game Modes</h3>
   <ul>
@@ -67,7 +75,8 @@
     <li><b>Ship</b> — hold to rise, release to fall.</li>
     <li><b>Wave</b> — hold = up 45°, release = down 45°.</li>
     <li><b>Robot</b> — hold for a higher jump.</li>
-    <li><b>Ball</b> — tap to flip gravity.</li>
+    <li><b>Ball</b> — tap to flip gravity &amp; roll the other surface.</li>
+    <li><b>UFO</b> — each tap is a little flap upward.</li>
     <li><b>Spider</b> — tap to teleport to the other surface.</li>
     <li><b>Swing</b> — hold flips gravity up, release flips it down.</li>
   </ul>
@@ -78,43 +87,60 @@
     <li><span class="dot" style="background:hsl(0,90%,58%)"></span><b>Red</b> — big jump</li>
     <li><span class="dot" style="background:#222"></span><b>Black</b> — slam toward gravity</li>
     <li><span class="dot" style="background:hsl(135,80%,52%)"></span><b>Green</b> — flip gravity + jump</li>
+    <li><span class="dot" style="background:hsl(210,95%,62%)"></span><b>Blue (gravity)</b> — reverse gravity</li>
+    <li><span class="dot" style="background:hsl(150,85%,52%)"></span><b>Green dash</b> — hold to dash straight ahead</li>
     <li><span class="dot" style="background:hsl(275,75%,62%)"></span><b>Spider</b> — flip gravity + teleport</li>
   </ul>
-  <h3>Speed Portals</h3>
-  <p>Dashed neon gates (»») change scroll speed from x0.8 up to x2.0. (They don't appear in Ship &amp; Wave.)</p>
+  <h3>Portals</h3>
+  <ul>
+    <li><b>Mode</b> — switch game mode.</li>
+    <li><span class="dot" style="background:hsl(210,95%,62%)"></span><b>Gravity</b> — flips gravity up/down.</li>
+    <li><span class="dot" style="background:hsl(150,85%,55%)"></span><b>Mini</b> / <span class="dot" style="background:hsl(285,85%,62%)"></span><b>Big</b> — shrink or restore your size.</li>
+    <li><b>Speed</b> — dashed neon gates (»») change scroll speed x0.8–x2.0.</li>
+  </ul>
   <h3>Pads (auto-activate on contact)</h3>
   <ul>
-    <li><span class="dot" style="background:hsl(50,100%,62%)"></span><b>Yellow pad</b> — bounce up</li>
-    <li><span class="dot" style="background:hsl(320,90%,68%)"></span><b>Pink pad</b> — small bounce</li>
-    <li><span class="dot" style="background:hsl(0,90%,58%)"></span><b>Red pad</b> — big launch</li>
-    <li><span class="dot" style="background:hsl(275,75%,62%)"></span><b>Spider pad</b> — flip gravity + teleport</li>
+    <li><span class="dot" style="background:hsl(50,100%,62%)"></span><b>Yellow</b> — bounce up · <span class="dot" style="background:hsl(320,90%,68%)"></span><b>Pink</b> — small · <span class="dot" style="background:hsl(0,90%,58%)"></span><b>Red</b> — big launch</li>
+    <li><span class="dot" style="background:hsl(210,95%,62%)"></span><b>Blue</b> — reverse gravity · <span class="dot" style="background:hsl(275,75%,62%)"></span><b>Spider</b> — flip + teleport</li>
   </ul>
   <h3>Debug</h3>
-  <p>Press <b>F</b> to toggle hitboxes (spikes, orbs, pads &amp; player).</p>
+  <p>Press <b>F</b> to toggle hitboxes. Press <b>E</b> to switch between playing yourself and watching the bot.</p>
   <button id="infoClose">✕ Close</button>
+</div></div>
+<div id="settings"><div class="card">
+  <h2>⚙ Settings</h2>
+  <h3>Game modes that appear</h3>
+  <div id="setModes" class="grid"></div>
+  <h3>Gimmicks</h3>
+  <label><input type="checkbox" id="setSpeed"> Speed-change portals</label>
+  <p style="color:#8a96cc;font-size:13px;margin-top:14px">Cube always starts the run. Changes are saved automatically.</p>
+  <button id="setClose">✕ Close</button>
 </div></div>
 <script>
 const cv = document.getElementById('c');
 const ctx = cv.getContext('2d');
 const menu = document.getElementById('menu');
 const info = document.getElementById('info');
-const W = cv.width, H = cv.height;
-const GROUND = H - 60;
+const settingsEl = document.getElementById('settings');
+let W = cv.width, H = cv.height;
+let GROUND = H - 60;
 const CEIL = 20;
 
-const MODES = ['cube', 'ship', 'wave', 'robot', 'ball', 'spider', 'swing'];
+const MODES = ['cube', 'ship', 'wave', 'robot', 'ball', 'ufo', 'spider', 'swing'];
 const GROUND_MODES = new Set(['cube', 'robot']);
-const GRAV_MODES = new Set(['cube', 'robot', 'ball']);
+const GRAV_MODES = new Set(['cube', 'robot', 'ball']);   // floor jump-orbs & pads spawn here
 const MODE_LEN = 1100;
 
-const ORB_COL = { yellow: [50, 100, 62], pink: [320, 90, 68], red: [0, 90, 58], green: [135, 80, 52], black: [0, 0, 16], spider: [275, 75, 62] };
+const ORB_COL = { yellow: [50, 100, 62], pink: [320, 90, 68], red: [0, 90, 58], green: [135, 80, 52],
+  black: [0, 0, 16], spider: [275, 75, 62], gravity: [210, 95, 62], dash: [150, 85, 52] };
 const SPEEDS = [0.8, 1.0, 1.3, 1.6, 2.0];
 function speedHue(m) { return m < 1 ? 28 : m < 1.2 ? 190 : m < 1.5 ? 135 : m < 1.8 ? 320 : 0; }
 
 // difficulty presets: speed=start speed, ramp=speed-up rate, dens=obstacle spacing (lower=denser),
-// gap=air-mode gap, ceil=ceiling-spike chance, dbl=double-spike chance
+// gap=air-mode gap, ceil=ceiling-spike chance, dbl=double-spike chance. Auto is the bot-only
+// "Tidal"-grade chart: humanly impossible, but the (invincible) bot drives through it.
 const DIFFS = [
-  { name: 'Auto',    speed: 4.4, ramp: 0.0003, dens: 1.9,  gap: 235, ceil: 0.04, dbl: 0.00, col: '#37d6ff', inv: true },
+  { name: 'Auto',    speed: 7.0, ramp: 0.0024, dens: 0.40, gap: 104, ceil: 0.88, dbl: 0.80, col: '#37d6ff', inv: true },
   { name: 'Easy',    speed: 5.0, ramp: 0.0005, dens: 1.45, gap: 210, ceil: 0.15, dbl: 0.10, col: '#43e06a' },
   { name: 'Normal',  speed: 5.6, ramp: 0.0008, dens: 1.0,  gap: 185, ceil: 0.40, dbl: 0.22, col: '#4a90ff' },
   { name: 'Hard',    speed: 6.2, ramp: 0.0011, dens: 0.86, gap: 165, ceil: 0.50, dbl: 0.35, col: '#ffd23d' },
@@ -127,8 +153,17 @@ let diff = DIFFS[2];
 // high score persists in localStorage
 let best = 0; try { best = parseInt(localStorage.getItem('cubeDashBest')) || 0; } catch (e) {}
 
-let player, obstacles, orbs, particles, trail, baseSpeed, speedMult, speed, score, state, spawnTimer, orbTimer, speedTimer, padTimer, hue, modeIndex, lastModeSwitch, grace, lastGapTop, lastSpacing;
-let holding = false, effHold = false, infoOpen = false, showHitboxes = false;
+// settings: which modes can appear + whether speed portals appear
+let settings = { modes: {}, speed: true };
+MODES.forEach(m => settings.modes[m] = true);
+try {
+  const s = JSON.parse(localStorage.getItem('cubeDashSettings'));
+  if (s) { if (s.modes) MODES.forEach(m => { if (typeof s.modes[m] === 'boolean') settings.modes[m] = s.modes[m]; }); if (typeof s.speed === 'boolean') settings.speed = s.speed; }
+} catch (e) {}
+function saveSettings() { try { localStorage.setItem('cubeDashSettings', JSON.stringify(settings)); } catch (e) {} }
+
+let player, obstacles, orbs, particles, trail, baseSpeed, speedMult, speed, score, state, spawnTimer, orbTimer, speedTimer, padTimer, gimmickTimer, hue, modeIndex, lastModeSwitch, grace, lastGapTop, lastSpacing;
+let holding = false, effHold = false, infoOpen = false, settingsOpen = false, showHitboxes = false, botMode = false;
 
 const GRAVITY = 0.9, JUMP = -15;
 const ROBOT_JUMP = -12.5, ROBOT_HOLD = 16;
@@ -136,12 +171,15 @@ const WAVE_SPEED = 6;
 const SHIP_THRUST = 0.7, SHIP_GRAV = 0.55, SHIP_MAX = 9;
 const BALL_GRAV = 0.95, BALL_MAX = 12;
 const SWING_GRAV = 0.7, SWING_MAX = 11;
+const UFO_FLAP = -8.2, UFO_GRAV = 0.5, UFO_MAX = 10;
+const DASH_T = 60, BASE_SIZE = 40;
 
 function reset() {
-  player = { x: 150, y: GROUND - 40, size: 40, vy: 0, onGround: true, rot: 0, mode: 'cube', gravityDir: 1, holdTime: 0 };
+  player = { x: 150, y: GROUND - BASE_SIZE, size: BASE_SIZE, vy: 0, onGround: true, rot: 0, mode: 'cube', gravityDir: 1, holdTime: 0, dashing: false, dashT: 0, dashY: 0 };
   obstacles = []; orbs = []; particles = []; trail = [];
   baseSpeed = diff.speed; speedMult = 1.0; speed = baseSpeed;
-  score = 0; hue = 200; spawnTimer = 220; orbTimer = 90; speedTimer = 1200; padTimer = 180; modeIndex = 0; lastModeSwitch = 0; grace = 0; lastGapTop = (CEIL + GROUND) / 2; lastSpacing = 260;
+  score = 0; hue = 200; spawnTimer = 220; orbTimer = 90; speedTimer = 1200; padTimer = 180; gimmickTimer = 540;
+  modeIndex = 0; lastModeSwitch = 0; grace = 0; lastGapTop = (CEIL + GROUND) / 2; lastSpacing = 260;
   state = 'play';
 }
 
@@ -154,18 +192,19 @@ function jumpNow() {
   const m = player.mode, gd = player.gravityDir;
   player.vy = (m === 'robot' ? ROBOT_JUMP : JUMP) * gd;
   player.onGround = false; player.holdTime = 0;
-  burst(player.x, player.y + (gd > 0 ? 40 : 0), hue);
+  burst(player.x, player.y + (gd > 0 ? player.size : 0), hue);
 }
 
 function press() {
-  if (infoOpen || state === 'menu') return;
+  if (infoOpen || settingsOpen || state === 'menu') return;
   if (state === 'dead') { reset(); return; }
   holding = true;
   if (tryActivateOrb()) return;
   const m = player.mode;
-  if ((m === 'cube' || m === 'robot')) { if (player.onGround) jumpNow(); }
+  if (m === 'cube' || m === 'robot') { if (player.onGround) jumpNow(); }
   else if (m === 'ball') { player.gravityDir *= -1; player.onGround = false; burst(player.x + 20, player.y + 20, (hue + 120) % 360); }
   else if (m === 'spider') { player.gravityDir *= -1; spiderTeleport(); }
+  else if (m === 'ufo') { player.vy = UFO_FLAP * player.gravityDir; player.onGround = false; burst(player.x, player.y + player.size, (hue + 40) % 360, 6); }
 }
 function release() { holding = false; }
 
@@ -178,12 +217,14 @@ function tryActivateOrb() {
 function activateOrb(o) {
   o.used = true; const gd = player.gravityDir; const [h] = ORB_COL[o.kind]; burst(o.x, o.y, h, 20);
   switch (o.kind) {
-    case 'yellow': player.vy = -15 * gd; break;
-    case 'pink':   player.vy = -10 * gd; break;
-    case 'red':    player.vy = -21 * gd; break;
-    case 'black':  player.vy = 16 * gd; break;
-    case 'green':  player.gravityDir *= -1; player.vy = -15 * player.gravityDir; break;
-    case 'spider': player.gravityDir *= -1; spiderTeleport(); break;
+    case 'yellow':  player.vy = -15 * gd; break;
+    case 'pink':    player.vy = -10 * gd; break;
+    case 'red':     player.vy = -21 * gd; break;
+    case 'black':   player.vy = 16 * gd; break;
+    case 'green':   player.gravityDir *= -1; player.vy = -15 * player.gravityDir; break;
+    case 'gravity': player.gravityDir *= -1; player.vy = -3 * player.gravityDir; break;   // blue: reverse gravity
+    case 'spider':  player.gravityDir *= -1; spiderTeleport(); break;
+    case 'dash':    player.dashing = true; player.dashY = o.y; player.dashT = DASH_T; break;
   }
   player.onGround = false;
 }
@@ -194,22 +235,37 @@ function spiderTeleport() {
   player.y = toY; player.vy = 0;
 }
 
+// shrink/grow keeping the surface contact point
+function setSize(ns) {
+  if (ns === player.size) return;
+  if (player.gravityDir > 0) player.y += (player.size - ns);   // keep bottom edge
+  player.size = ns;
+}
+
+// next enabled mode after idx (skips modes turned off in Settings); returns idx if none other
+function nextMode(idx) {
+  for (let i = 1; i <= MODES.length; i++) { const j = (idx + i) % MODES.length; if (settings.modes[MODES[j]]) return j; }
+  return idx;
+}
+
 function switchMode(to) {
   trail = [];
-  player.mode = to; player.vy = 0; player.gravityDir = 1; player.holdTime = 0;
+  player.mode = to; player.vy = 0; player.gravityDir = 1; player.holdTime = 0; player.dashing = false; player.size = BASE_SIZE;
   if (to === 'wave' || to === 'ship' || to === 'spider') speedMult = 1.0;   // no speed changes in these modes
-  if (GROUND_MODES.has(to)) { player.onGround = false; player.rot = 0; }
+  if (GROUND_MODES.has(to)) { player.onGround = false; player.rot = 0; player.y = GROUND - player.size; }
   else if (to === 'spider' || to === 'ball') player.y = GROUND - player.size;
+  else player.y = (CEIL + GROUND) / 2 - player.size / 2;   // air modes (ship/wave/ufo/swing) start centred
   // clear the track ahead so leftover obstacles from the previous mode can't cause an unfair death
   obstacles = obstacles.filter(o => o.type === 'portal' || o.x + (o.w || 42) < player.x);
-  spawnTimer = Math.max(spawnTimer, 280); orbTimer = Math.max(orbTimer, 140); grace = 35; lastGapTop = (CEIL + GROUND) / 2;
+  spawnTimer = Math.max(spawnTimer, 300); orbTimer = Math.max(orbTimer, 140); grace = 40; lastGapTop = (CEIL + GROUND) / 2;
   burst(player.x + 20, player.y + 20, (hue + 180) % 360, 26);
 }
 
 // ----- spawning -----------------------------------------------------------
 function spawn() {
   if (score - lastModeSwitch > MODE_LEN) {
-    obstacles.push({ type: 'portal', x: W + 40, w: 34, h: GROUND - CEIL, to: MODES[(modeIndex + 1) % MODES.length] });
+    const ni = nextMode(modeIndex);
+    if (ni !== modeIndex) obstacles.push({ type: 'portal', x: W + 40, w: 34, h: GROUND - CEIL, to: MODES[ni], toIdx: ni });
     lastModeSwitch = score; spawnTimer = nextSpacing(); return;
   }
   if (GROUND_MODES.has(player.mode)) {
@@ -238,7 +294,7 @@ function spawn() {
     const gap = player.mode === 'wave' ? Math.max(105, diff.gap - 35) : diff.gap;
     const minTop = CEIL + 25, maxTop = Math.max(minTop, GROUND - gap - 70);
     // keep the next gap within reach of the last one so flying modes stay possible
-    const vSpeed = player.mode === 'wave' ? WAVE_SPEED : player.mode === 'ship' ? 3.2 : player.mode === 'spider' ? 20 : 5;
+    const vSpeed = player.mode === 'wave' ? WAVE_SPEED : player.mode === 'ship' ? 3.2 : player.mode === 'ufo' ? 6 : 5;
     const reach = (lastSpacing / speed) * vSpeed * 0.6;
     const top = Math.max(minTop, Math.min(maxTop, lastGapTop + (Math.random() * 2 - 1) * reach));
     lastGapTop = top;
@@ -263,21 +319,35 @@ function nextSpacing() {
 }
 
 function spawnOrb() {
-  if (!GRAV_MODES.has(player.mode)) return;
-  const kinds = ['yellow', 'pink', 'red', 'black', 'green', 'spider'];
-  orbs.push({ kind: kinds[Math.floor(Math.random() * kinds.length)], x: W + 40, y: GROUND - 70 - Math.random() * 170, r: 17, used: false });
+  const m = player.mode;
+  if (m === 'spider') return;
+  const kinds = GRAV_MODES.has(m) ? ['yellow', 'pink', 'red', 'black', 'green', 'spider', 'gravity', 'dash'] : ['gravity', 'dash'];
+  const y = CEIL + 40 + Math.random() * (GROUND - CEIL - 80);
+  orbs.push({ kind: kinds[Math.floor(Math.random() * kinds.length)], x: W + 40, y, r: 17, used: false });
 }
 
 function spawnSpeed() {
+  if (!settings.speed) return;
   if (player.mode === 'wave' || player.mode === 'ship' || player.mode === 'spider') return;   // no speed portals here
   const opts = SPEEDS.filter(v => v !== speedMult);
   obstacles.push({ type: 'speed', x: W + 40, mult: opts[Math.floor(Math.random() * opts.length)], used: false });
 }
 
+// gravity & size portals appear now and then
+function spawnGimmick() {
+  const m = player.mode, gdMode = (m === 'cube' || m === 'robot' || m === 'ball' || m === 'ufo');
+  if (Math.random() < 0.5 && gdMode) {
+    obstacles.push({ type: 'grav', x: W + 40, w: 30, h: GROUND - CEIL, used: false });
+  } else {
+    const mini = player.size > BASE_SIZE * 0.8 ? true : Math.random() < 0.4;   // shrink if normal, else maybe restore
+    obstacles.push({ type: 'size', x: W + 40, w: 30, scale: mini ? 0.6 : 1.0, used: false });
+  }
+}
+
 // pads sit on the floor and auto-activate on contact (no tap needed), GD-style
 function spawnPad() {
   if (diff.inv || !GRAV_MODES.has(player.mode)) return;
-  const kinds = ['yellow', 'pink', 'red', 'spider'];
+  const kinds = ['yellow', 'pink', 'red', 'spider', 'gravity'];
   obstacles.push({ type: 'pad', kind: kinds[Math.floor(Math.random() * kinds.length)], x: W + 40, w: 48, used: false });
 }
 function activatePad(o) {
@@ -286,6 +356,7 @@ function activatePad(o) {
   else if (o.kind === 'pink') player.vy = -12 * gd;
   else if (o.kind === 'red') player.vy = -24 * gd;
   else if (o.kind === 'spider') { player.gravityDir *= -1; spiderTeleport(); }
+  else if (o.kind === 'gravity') { player.gravityDir *= -1; }
   player.onGround = false;
 }
 
@@ -308,7 +379,7 @@ function groundLand() {
   }
 }
 
-// ----- auto difficulty pilot ----------------------------------------------
+// ----- bot pilot ----------------------------------------------------------
 // center of the next bar-gap ahead of the player (null if none spawned yet)
 function nextGapCenter() {
   let bx = Infinity;
@@ -321,21 +392,21 @@ function nextGapCenter() {
   return (gTop + gBot) / 2;
 }
 
-// drives the player in Auto difficulty. Returns a virtual "hold" for the
-// flying modes, or null when there is nothing to steer this frame.
-// auto difficulty: tap jump orbs we're within reach of (skip gravity-flip & slam orbs)
+// activate jump & dash orbs we're within reach of (skip gravity-flip & slam orbs)
 function autoUseOrbs() {
   const cx = player.x + player.size / 2, cy = player.y + player.size / 2, reach = (player.size * 0.55) ** 2;
   for (const o of orbs) {
-    if (o.used || (o.kind !== 'yellow' && o.kind !== 'pink' && o.kind !== 'red')) continue;
+    if (o.used || (o.kind !== 'yellow' && o.kind !== 'pink' && o.kind !== 'red' && o.kind !== 'dash')) continue;
     const dx = cx - o.x, dy = cy - o.y;
     if (dx * dx + dy * dy < (o.r + 6) ** 2 + reach) activateOrb(o);
   }
 }
 
+// returns a virtual "hold" for the flying modes, or null when nothing to steer this frame
 function autoPilot() {
   const s = player.size, m = player.mode, gd = player.gravityDir;
   autoUseOrbs();
+  if (player.dashing) return true;   // keep riding a dash orb
   if (GROUND_MODES.has(m)) {
     if (!player.onGround) return null;
     const arc = (2 * Math.abs(JUMP) / GRAVITY) * speed;   // horizontal jump distance at this speed
@@ -364,6 +435,10 @@ function autoPilot() {
     if (gd !== want) { player.gravityDir = want; spiderTeleport(); }
     return null;
   }
+  if (m === 'ufo') {             // flap when below the target and not already rising hard
+    if (cy > c + 6 && player.vy * gd > -3) { player.vy = UFO_FLAP * gd; player.onGround = false; }
+    return null;
+  }
   return cy > c;                 // ship / wave / swing: hold to rise toward the gap
 }
 
@@ -373,44 +448,62 @@ function update() {
   score += 1; baseSpeed += diff.ramp; speed = baseSpeed * speedMult; hue = (hue + 0.4) % 360;
   if (grace > 0) grace--;
   const s = player.size, m = player.mode;
-  // Auto difficulty: let the autopilot jump, steer & flip toward the gaps
+  // bot drives when toggled on (E); Auto difficulty defaults the bot on
   let hold = holding;
-  if (diff.inv) { const ah = autoPilot(); if (ah !== null) hold = holding || ah; }
+  if (botMode) { const ah = autoPilot(); if (ah !== null) hold = holding || ah; }
   effHold = hold;
   const gd = player.gravityDir;
 
-  if (m === 'cube') {
-    player.vy += GRAVITY * gd; player.y += player.vy;
-    if (!player.onGround) player.rot += 0.18 * gd;
-    groundLand();
-    if (player.onGround && holding) jumpNow();          // hold = keep jumping
-  } else if (m === 'robot') {
-    if (holding && player.vy * gd < 0 && player.holdTime < ROBOT_HOLD) { player.vy += GRAVITY * 0.45 * gd; player.holdTime++; }
-    else player.vy += GRAVITY * gd;
-    player.y += player.vy;
-    if (!player.onGround) player.rot += 0.15 * gd;
-    groundLand();
-    if (player.onGround && holding) jumpNow();           // hold = keep jumping
-  } else if (m === 'ship') {
-    player.vy += hold ? -SHIP_THRUST : SHIP_GRAV; player.vy = Math.max(-SHIP_MAX, Math.min(SHIP_MAX, player.vy)); player.y += player.vy;
-    if (player.y + s > GROUND) { player.y = GROUND - s; player.vy = 0; } if (player.y < CEIL) { player.y = CEIL; player.vy = 0; }
-    player.rot = player.vy * 0.05;
-  } else if (m === 'wave') {
-    player.vy = hold ? -WAVE_SPEED : WAVE_SPEED; player.y += player.vy; player.rot = hold ? -Math.PI / 4 : Math.PI / 4;
-    if (player.y + s > GROUND) player.y = GROUND - s; if (player.y < CEIL) player.y = CEIL;
-    trail.push({ x: player.x + s / 2, y: player.y + s / 2, life: 1, h: hue });
-  } else if (m === 'ball') {
-    player.vy += BALL_GRAV * gd; player.vy = Math.max(-BALL_MAX, Math.min(BALL_MAX, player.vy)); player.y += player.vy;
-    if (player.y + s >= GROUND) { player.y = GROUND - s; if (gd > 0) { player.vy = 0; player.onGround = true; } }
-    else if (player.y <= CEIL) { player.y = CEIL; if (gd < 0) { player.vy = 0; player.onGround = true; } }
-    else player.onGround = false;
-    player.rot += 0.2 * gd;
-  } else if (m === 'spider') {
-    player.y = gd > 0 ? GROUND - s : CEIL;
-  } else if (m === 'swing') {
-    player.vy += SWING_GRAV * (hold ? -1 : 1); player.vy = Math.max(-SWING_MAX, Math.min(SWING_MAX, player.vy)); player.y += player.vy;
-    if (player.y + s > GROUND) { player.y = GROUND - s; player.vy = 0; } if (player.y < CEIL) { player.y = CEIL; player.vy = 0; }
-    player.rot = player.vy * 0.05;
+  let dashed = false;
+  if (player.dashing) {
+    if (hold && player.dashT > 0 && m !== 'spider') {
+      player.dashT--; player.vy = 0;
+      player.y += (player.dashY - (player.y + s / 2)) * 0.35;
+      if (player.y < CEIL) player.y = CEIL; if (player.y + s > GROUND) player.y = GROUND - s;
+      player.rot += 0.25; dashed = true;
+      if (Math.random() < 0.6) burst(player.x, player.y + s / 2, ORB_COL.dash[0], 1);
+    } else { player.dashing = false; player.vy = 0; }
+  }
+
+  if (!dashed) {
+    if (m === 'cube') {
+      player.vy += GRAVITY * gd; player.y += player.vy;
+      if (!player.onGround) player.rot += 0.18 * gd;
+      groundLand();
+      if (player.onGround && hold) jumpNow();          // hold = keep jumping
+    } else if (m === 'robot') {
+      if (hold && player.vy * gd < 0 && player.holdTime < ROBOT_HOLD) { player.vy += GRAVITY * 0.45 * gd; player.holdTime++; }
+      else player.vy += GRAVITY * gd;
+      player.y += player.vy;
+      if (!player.onGround) player.rot += 0.15 * gd;
+      groundLand();
+      if (player.onGround && hold) jumpNow();           // hold = keep jumping
+    } else if (m === 'ship') {
+      player.vy += hold ? -SHIP_THRUST : SHIP_GRAV; player.vy = Math.max(-SHIP_MAX, Math.min(SHIP_MAX, player.vy)); player.y += player.vy;
+      if (player.y + s > GROUND) { player.y = GROUND - s; player.vy = 0; } if (player.y < CEIL) { player.y = CEIL; player.vy = 0; }
+      player.rot = player.vy * 0.05;
+    } else if (m === 'wave') {
+      player.vy = hold ? -WAVE_SPEED : WAVE_SPEED; player.y += player.vy; player.rot = hold ? -Math.PI / 4 : Math.PI / 4;
+      if (player.y + s > GROUND) player.y = GROUND - s; if (player.y < CEIL) player.y = CEIL;
+      trail.push({ x: player.x + s / 2, y: player.y + s / 2, life: 1, h: hue });
+      if (trail.length > 260) trail.shift();
+    } else if (m === 'ball') {
+      player.vy += BALL_GRAV * gd; player.vy = Math.max(-BALL_MAX, Math.min(BALL_MAX, player.vy)); player.y += player.vy;
+      if (player.y + s >= GROUND) { player.y = GROUND - s; if (gd > 0) { player.vy = 0; player.onGround = true; } }
+      else if (player.y <= CEIL) { player.y = CEIL; if (gd < 0) { player.vy = 0; player.onGround = true; } }
+      else player.onGround = false;
+      player.rot += 0.2 * gd;
+    } else if (m === 'ufo') {
+      player.vy += UFO_GRAV * gd; player.vy = Math.max(-UFO_MAX, Math.min(UFO_MAX, player.vy)); player.y += player.vy;
+      if (player.y + s > GROUND) { player.y = GROUND - s; player.vy = 0; } if (player.y < CEIL) { player.y = CEIL; player.vy = 0; }
+      player.rot = player.vy * 0.04;
+    } else if (m === 'spider') {
+      player.y = gd > 0 ? GROUND - s : CEIL;
+    } else if (m === 'swing') {
+      player.vy += SWING_GRAV * (hold ? -1 : 1); player.vy = Math.max(-SWING_MAX, Math.min(SWING_MAX, player.vy)); player.y += player.vy;
+      if (player.y + s > GROUND) { player.y = GROUND - s; player.vy = 0; } if (player.y < CEIL) { player.y = CEIL; player.vy = 0; }
+      player.rot = player.vy * 0.05;
+    }
   }
 
   for (const o of obstacles) {
@@ -423,7 +516,11 @@ function update() {
     } else if (o.type === 'bar') {
       if (aabb(player.x + 6, player.y + 6, s - 12, s - 12, o.x, o.y, o.w, o.h)) die();
     } else if (o.type === 'portal') {
-      const py = (GROUND + CEIL) / 2 - o.h / 2; if (!o.used && aabb(player.x, player.y, s, s, o.x, py, o.w, o.h)) { o.used = true; modeIndex = (modeIndex + 1) % MODES.length; switchMode(o.to); }
+      const py = (GROUND + CEIL) / 2 - o.h / 2; if (!o.used && aabb(player.x, player.y, s, s, o.x, py, o.w, o.h)) { o.used = true; modeIndex = o.toIdx; switchMode(o.to); }
+    } else if (o.type === 'grav') {
+      if (!o.used && aabb(player.x, player.y, s, s, o.x, CEIL, o.w, GROUND - CEIL)) { o.used = true; player.gravityDir *= -1; player.onGround = false; burst(player.x + s / 2, player.y + s / 2, 210, 18); }
+    } else if (o.type === 'size') {
+      if (!o.used && aabb(player.x, player.y, s, s, o.x, CEIL, o.w, GROUND - CEIL)) { o.used = true; setSize(BASE_SIZE * o.scale); burst(player.x + s / 2, player.y + s / 2, o.scale < 1 ? 150 : 285, 18); }
     } else if (o.type === 'speed') {
       if (!o.used && o.x <= player.x + s) { o.used = true; speedMult = o.mult; burst(player.x, player.y + s / 2, speedHue(o.mult), 16); }
     } else if (o.type === 'pad') {
@@ -435,12 +532,13 @@ function update() {
 
   for (const p of particles) { p.x += p.vx; p.y += p.vy; p.vy += 0.3; p.life -= 0.03; }
   particles = particles.filter(p => p.life > 0);
-  for (const t of trail) t.life -= 0.04; trail = trail.filter(t => t.life > 0);
+  for (const t of trail) t.life -= 0.012; trail = trail.filter(t => t.life > 0);
 
   spawnTimer -= speed; if (spawnTimer <= 0) spawn();
   orbTimer -= speed; if (orbTimer <= 0) { spawnOrb(); orbTimer = 160 + Math.random() * 170; }
   speedTimer -= speed; if (speedTimer <= 0) { spawnSpeed(); speedTimer = 1100 + Math.random() * 700; }
   padTimer -= speed; if (padTimer <= 0) { spawnPad(); padTimer = 240 + Math.random() * 240; }
+  gimmickTimer -= speed; if (gimmickTimer <= 0) { spawnGimmick(); gimmickTimer = 900 + Math.random() * 800; }
 }
 
 // ----- draw ---------------------------------------------------------------
@@ -457,18 +555,34 @@ function draw() {
   for (let x = -(score * speed) % 40; x < W; x += 40) { ctx.beginPath(); ctx.moveTo(x, GROUND); ctx.lineTo(x, H); ctx.stroke(); }
 
   if (player.mode === 'wave' && trail.length > 1) {
-    ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-    for (let i = 1; i < trail.length; i++) { const a = trail[i - 1], b = trail[i]; ctx.strokeStyle = `hsla(${b.h}, 90%, 65%, ${b.life * 0.7})`; ctx.lineWidth = 6 * b.life + 1; ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke(); }
+    ctx.save(); ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+    ctx.shadowColor = `hsl(${hue}, 90%, 65%)`; ctx.shadowBlur = 14;
+    for (let i = 1; i < trail.length; i++) {
+      const a = trail[i - 1], b = trail[i];
+      ctx.strokeStyle = `hsla(${b.h}, 90%, 68%, ${0.25 + 0.6 * b.life})`;
+      ctx.lineWidth = player.size * 0.5 * b.life + 3;
+      ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
+    }
+    ctx.restore();
   }
 
   for (const o of orbs) {
     const [h, sa, l] = ORB_COL[o.kind];
     if (o.used) { ctx.globalAlpha = .25; ctx.strokeStyle = `hsl(${h},${sa}%,${l}%)`; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(o.x, o.y, o.r * .6, 0, Math.PI * 2); ctx.stroke(); ctx.globalAlpha = 1; continue; }
+    if (o.kind === 'dash') {   // green dash orb: elongated glowing pill with an arrow
+      ctx.save(); ctx.translate(o.x, o.y);
+      ctx.globalAlpha = .22; ctx.fillStyle = `hsl(${h},${sa}%,${l}%)`; ctx.beginPath(); ctx.ellipse(0, 0, 28, 14, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.globalAlpha = 1; ctx.fillStyle = `hsl(${h},${sa}%,${l}%)`; ctx.strokeStyle = '#eaffea'; ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.ellipse(0, 0, 23, 11, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = '#0c2a14'; ctx.beginPath(); ctx.moveTo(-7, -6); ctx.lineTo(9, 0); ctx.lineTo(-7, 6); ctx.closePath(); ctx.fill();
+      ctx.restore(); continue;
+    }
     const pulse = o.r + 3 + 2 * Math.sin(score * 0.12 + o.y);
     ctx.globalAlpha = .25; ctx.fillStyle = `hsl(${h},${sa}%,${l}%)`; ctx.beginPath(); ctx.arc(o.x, o.y, pulse + 5, 0, Math.PI * 2); ctx.fill();
     ctx.globalAlpha = 1; ctx.fillStyle = `hsl(${h},${sa}%,${l}%)`; ctx.strokeStyle = '#fff'; ctx.lineWidth = 2.5;
     ctx.beginPath(); ctx.arc(o.x, o.y, o.r, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
     if (o.kind === 'spider') { ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.5; for (const dx of [-1, 1]) for (const a of [.5, 1]) { ctx.beginPath(); ctx.moveTo(o.x, o.y); ctx.lineTo(o.x + dx * o.r * a, o.y - o.r * a * .6); ctx.stroke(); } }
+    else if (o.kind === 'gravity') { ctx.strokeStyle = '#fff'; ctx.lineWidth = 2.2; ctx.beginPath(); ctx.moveTo(o.x - 6, o.y - 1); ctx.lineTo(o.x, o.y - 8); ctx.lineTo(o.x + 6, o.y - 1); ctx.stroke(); ctx.beginPath(); ctx.moveTo(o.x - 6, o.y + 1); ctx.lineTo(o.x, o.y + 8); ctx.lineTo(o.x + 6, o.y + 1); ctx.stroke(); }
     else { ctx.fillStyle = 'rgba(255,255,255,.85)'; ctx.beginPath(); ctx.arc(o.x, o.y, o.r * .35, 0, Math.PI * 2); ctx.fill(); }
   }
 
@@ -486,7 +600,20 @@ function draw() {
       const py = (GROUND + CEIL) / 2 - o.h / 2, cx = o.x + o.w / 2, cy = py + o.h / 2, pc = (hue + 200) % 360;
       ctx.strokeStyle = `hsl(${pc}, 90%, 65%)`; ctx.lineWidth = 5; ctx.globalAlpha = .9; ctx.beginPath(); ctx.ellipse(cx, cy, o.w / 2, o.h / 2, 0, 0, Math.PI * 2); ctx.stroke();
       ctx.globalAlpha = .16; ctx.fillStyle = `hsl(${pc}, 90%, 65%)`; ctx.beginPath(); ctx.ellipse(cx, cy, o.w / 2, o.h / 2, 0, 0, Math.PI * 2); ctx.fill();
-      ctx.globalAlpha = 1; ctx.fillStyle = '#fff'; ctx.font = 'bold 13px Segoe UI'; ctx.textAlign = 'center'; ctx.fillText(o.to.toUpperCase(), cx, py - 8);
+      ctx.globalAlpha = 1; ctx.fillStyle = '#fff'; ctx.font = 'bold 13px Segoe UI'; ctx.textAlign = 'center'; ctx.fillText(o.to.toUpperCase(), cx, CEIL + 16);
+    } else if (o.type === 'grav') {
+      const cx = o.x + o.w / 2, cy = (GROUND + CEIL) / 2;
+      ctx.strokeStyle = 'hsl(210, 95%, 65%)'; ctx.lineWidth = 5; ctx.globalAlpha = .9; ctx.beginPath(); ctx.ellipse(cx, cy, o.w / 2, (GROUND - CEIL) / 2, 0, 0, Math.PI * 2); ctx.stroke();
+      ctx.globalAlpha = .14; ctx.fillStyle = 'hsl(210, 95%, 60%)'; ctx.beginPath(); ctx.ellipse(cx, cy, o.w / 2, (GROUND - CEIL) / 2, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.globalAlpha = 1; ctx.strokeStyle = '#fff'; ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.moveTo(cx - 8, cy - 6); ctx.lineTo(cx, cy - 16); ctx.lineTo(cx + 8, cy - 6); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(cx - 8, cy + 6); ctx.lineTo(cx, cy + 16); ctx.lineTo(cx + 8, cy + 6); ctx.stroke();
+      ctx.fillStyle = '#cfe6ff'; ctx.font = 'bold 11px Segoe UI'; ctx.textAlign = 'center'; ctx.fillText('GRAVITY', cx, CEIL + 14);
+    } else if (o.type === 'size') {
+      const cx = o.x + o.w / 2, cy = (GROUND + CEIL) / 2, mini = o.scale < 1, pc = mini ? 150 : 285;
+      ctx.strokeStyle = `hsl(${pc}, 85%, 62%)`; ctx.lineWidth = 5; ctx.globalAlpha = .9; ctx.beginPath(); ctx.ellipse(cx, cy, o.w / 2, (GROUND - CEIL) / 2, 0, 0, Math.PI * 2); ctx.stroke();
+      ctx.globalAlpha = .14; ctx.fillStyle = `hsl(${pc}, 85%, 60%)`; ctx.beginPath(); ctx.ellipse(cx, cy, o.w / 2, (GROUND - CEIL) / 2, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.globalAlpha = 1; ctx.fillStyle = '#fff'; ctx.font = 'bold 12px Segoe UI'; ctx.textAlign = 'center'; ctx.fillText(mini ? 'MINI' : 'BIG', cx, CEIL + 14);
     } else if (o.type === 'speed') {
       const sh = speedHue(o.mult);
       ctx.globalAlpha = .75; ctx.strokeStyle = `hsl(${sh},90%,62%)`; ctx.lineWidth = 3; ctx.setLineDash([11, 8]);
@@ -516,22 +643,20 @@ function draw() {
   ctx.font = 'bold 14px Segoe UI, sans-serif'; ctx.fillStyle = diff.col; ctx.fillText(diff.name.toUpperCase(), 22, 86);
   ctx.textAlign = 'right'; ctx.fillStyle = `hsl(${(hue + 200) % 360},90%,72%)`; ctx.fillText(player.mode.toUpperCase() + ' MODE', W - 20, 36);
   ctx.fillStyle = `hsl(${speedHue(speedMult)},90%,68%)`; ctx.fillText('x' + speedMult + ' speed', W - 20, 64);
-  if (showHitboxes) { ctx.fillStyle = '#7fff9f'; ctx.font = 'bold 13px Segoe UI, sans-serif'; ctx.fillText('HITBOXES ON (F)', W - 20, 86); }
+  ctx.fillStyle = botMode ? '#37d6ff' : '#7e8ac0'; ctx.font = 'bold 13px Segoe UI, sans-serif'; ctx.fillText((botMode ? '🤖 BOT' : '🎮 YOU') + ' (E)', W - 20, 88);
+  if (showHitboxes) { ctx.fillStyle = '#7fff9f'; ctx.fillText('HITBOXES ON (F)', W - 20, 110); }
 
   if (state === 'dead') {
     ctx.fillStyle = 'rgba(0,0,0,.55)'; ctx.fillRect(0, 0, W, H);
     ctx.fillStyle = '#fff'; ctx.textAlign = 'center'; ctx.font = 'bold 48px Segoe UI, sans-serif'; ctx.fillText('GAME OVER', W / 2, H / 2 - 20);
     ctx.font = '22px Segoe UI, sans-serif'; ctx.fillText('Score: ' + Math.floor(score / 10) + '   •   Best: ' + Math.floor(best / 10), W / 2, H / 2 + 20);
     ctx.fillStyle = '#9fb4ff'; ctx.fillText('Press SPACE / CLICK to restart', W / 2, H / 2 + 60);
-    const ib = infoBtnRect();
-    ctx.fillStyle = 'rgba(74,90,176,.55)'; ctx.strokeStyle = '#9fb4ff'; ctx.lineWidth = 2;
-    ctx.fillRect(ib.x, ib.y, ib.w, ib.h); ctx.strokeRect(ib.x, ib.y, ib.w, ib.h);
-    ctx.fillStyle = '#eaf0ff'; ctx.font = 'bold 17px Segoe UI, sans-serif'; ctx.textBaseline = 'middle';
-    ctx.fillText('ⓘ  Info / Help', ib.x + ib.w / 2, ib.y + ib.h / 2 + 1);
-    const db = diffBtnRect();
-    ctx.fillStyle = 'rgba(74,90,176,.55)'; ctx.strokeStyle = '#9fb4ff'; ctx.lineWidth = 2;
-    ctx.fillRect(db.x, db.y, db.w, db.h); ctx.strokeRect(db.x, db.y, db.w, db.h);
-    ctx.fillStyle = '#eaf0ff'; ctx.fillText('≡  Difficulty', db.x + db.w / 2, db.y + db.h / 2 + 1);
+    ctx.textBaseline = 'middle';
+    for (const [rect, label] of [[infoBtnRect(), 'ⓘ  Info / Help'], [diffBtnRect(), '≡  Difficulty'], [setGOBtnRect(), '⚙  Settings']]) {
+      ctx.fillStyle = 'rgba(74,90,176,.55)'; ctx.strokeStyle = '#9fb4ff'; ctx.lineWidth = 2;
+      ctx.fillRect(rect.x, rect.y, rect.w, rect.h); ctx.strokeRect(rect.x, rect.y, rect.w, rect.h);
+      ctx.fillStyle = '#eaf0ff'; ctx.font = 'bold 16px Segoe UI, sans-serif'; ctx.fillText(label, rect.x + rect.w / 2, rect.y + rect.h / 2 + 1);
+    }
     ctx.textBaseline = 'alphabetic';
   }
 }
@@ -539,19 +664,22 @@ function draw() {
 function drawPlayer() {
   const s = player.size, m = player.mode;
   ctx.save(); ctx.translate(player.x + s / 2, player.y + s / 2); ctx.rotate(player.rot);
+  if (player.dashing) { ctx.shadowColor = `hsl(${ORB_COL.dash[0]},90%,60%)`; ctx.shadowBlur = 18; }
   ctx.fillStyle = `hsl(${hue}, 85%, 60%)`; ctx.strokeStyle = '#fff'; ctx.lineWidth = 3;
   if (m === 'wave') { ctx.beginPath(); ctx.moveTo(-s * .35, -s * .35); ctx.lineTo(s * .35, 0); ctx.lineTo(-s * .35, s * .35); ctx.closePath(); ctx.fill(); ctx.stroke(); }
   else if (m === 'ball') { ctx.beginPath(); ctx.arc(0, 0, s / 2, 0, Math.PI * 2); ctx.fill(); ctx.stroke(); ctx.strokeStyle = 'rgba(255,255,255,.8)'; ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(s / 2, 0); ctx.stroke(); }
   else if (m === 'ship') { ctx.beginPath(); ctx.moveTo(-s / 2, s / 3); ctx.lineTo(s / 2, 0); ctx.lineTo(-s / 2, -s / 3); ctx.closePath(); ctx.fill(); ctx.stroke(); if (effHold) { ctx.fillStyle = `hsl(${(hue + 30) % 360},90%,60%)`; ctx.beginPath(); ctx.moveTo(-s / 2, 0); ctx.lineTo(-s, (Math.random() - .5) * 10); ctx.lineTo(-s / 2, 8); ctx.closePath(); ctx.fill(); } }
+  else if (m === 'ufo') { ctx.beginPath(); ctx.ellipse(0, s * .12, s * .55, s * .26, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke(); ctx.beginPath(); ctx.ellipse(0, -s * .08, s * .3, s * .26, 0, Math.PI, 0); ctx.fill(); ctx.stroke(); }
   else if (m === 'spider') { ctx.fillRect(-s / 2, -s / 2, s, s); ctx.strokeRect(-s / 2, -s / 2, s, s); ctx.strokeStyle = 'rgba(255,255,255,.7)'; ctx.lineWidth = 2; for (const dx of [-1, 1]) for (const dy of [-1, 1]) { ctx.beginPath(); ctx.moveTo(dx * s / 2, dy * s / 3); ctx.lineTo(dx * s * .8, dy * s * .7); ctx.stroke(); } }
   else if (m === 'swing') { ctx.beginPath(); ctx.moveTo(0, -s / 2); ctx.lineTo(s / 2, 0); ctx.lineTo(0, s / 2); ctx.lineTo(-s / 2, 0); ctx.closePath(); ctx.fill(); ctx.stroke(); }
   else { ctx.fillRect(-s / 2, -s / 2, s, s); ctx.strokeRect(-s / 2, -s / 2, s, s); ctx.fillStyle = 'rgba(255,255,255,.85)'; if (m === 'robot') ctx.fillRect(-s / 2 + 7, -s / 2 + 9, s - 14, 7); else ctx.fillRect(-s / 2 + 8, -s / 2 + 8, s / 3, s / 3); }
   ctx.restore();
 }
 
-// ----- info button (drawn on the Game Over menu) --------------------------
-function infoBtnRect() { return { x: W / 2 - 90, y: H / 2 + 78, w: 180, h: 38 }; }
-function diffBtnRect() { return { x: W / 2 - 90, y: H / 2 + 124, w: 180, h: 38 }; }
+// ----- buttons on the Game Over menu --------------------------------------
+function infoBtnRect() { return { x: W / 2 - 90, y: H / 2 + 80, w: 180, h: 36 }; }
+function diffBtnRect() { return { x: W / 2 - 90, y: H / 2 + 122, w: 180, h: 36 }; }
+function setGOBtnRect() { return { x: W / 2 - 90, y: H / 2 + 164, w: 180, h: 36 }; }
 function canvasPos(e) {
   const r = cv.getBoundingClientRect();
   const t = e.changedTouches ? e.changedTouches[0] : e;
@@ -566,6 +694,7 @@ function pointerDown(e) {
     const p = canvasPos(e);
     if (inRect(p, infoBtnRect())) { openInfo(); return; }
     if (inRect(p, diffBtnRect())) { showMenu(); return; }
+    if (inRect(p, setGOBtnRect())) { openSettings(); return; }
   }
   press();
 }
@@ -578,6 +707,7 @@ function drawHitboxes() {
     else if (o.type === 'block') { ctx.strokeStyle = 'rgba(255,70,70,.95)'; ctx.strokeRect(o.x, GROUND - o.h, o.w, o.h); }
     else if (o.type === 'bar') { ctx.strokeStyle = 'rgba(255,70,70,.95)'; ctx.strokeRect(o.x, o.y, o.w, o.h); }
     else if (o.type === 'pad') { ctx.strokeStyle = 'rgba(120,255,150,.95)'; ctx.strokeRect(o.x, GROUND - 14, o.w, 16); }
+    else if (o.type === 'grav' || o.type === 'size') { ctx.strokeStyle = 'rgba(120,200,255,.7)'; ctx.strokeRect(o.x, CEIL, o.w, GROUND - CEIL); }
   }
   ctx.strokeStyle = 'rgba(90,200,255,.95)';
   for (const o of orbs) { if (o.used) continue; const rr = Math.sqrt((o.r + 6) ** 2 + (s * 0.55) ** 2); ctx.beginPath(); ctx.arc(o.x, o.y, rr, 0, Math.PI * 2); ctx.stroke(); }
@@ -587,31 +717,68 @@ function drawHitboxes() {
 
 function loop() { update(); draw(); requestAnimationFrame(loop); }
 
+// ----- responsive canvas --------------------------------------------------
+function resize() {
+  const w = Math.max(480, Math.min(window.innerWidth, 1920));
+  const h = Math.max(320, Math.min(window.innerHeight, 1080));
+  cv.width = w; cv.height = h;
+  W = w; H = h; GROUND = H - 60;
+  if (player && GROUND_MODES.has(player.mode) && player.gravityDir > 0) player.y = Math.min(player.y, GROUND - player.size);
+}
+window.addEventListener('resize', resize);
+
 // ----- input listeners ----------------------------------------------------
 const JUMP_KEYS = new Set(['Space', 'ArrowUp', 'KeyW', 'Enter']);
-function keyDown(e) { if (e.code === 'Escape') { if (infoOpen) closeInfo(); else if (state === 'play') showMenu(); return; } if (e.code === 'KeyF') { showHitboxes = !showHitboxes; return; } if (JUMP_KEYS.has(e.code)) { e.preventDefault(); if (!e.repeat) press(); } }
+function keyDown(e) {
+  if (e.code === 'Escape') { if (settingsOpen) closeSettings(); else if (infoOpen) closeInfo(); else if (state === 'play') showMenu(); return; }
+  if (e.code === 'KeyF') { showHitboxes = !showHitboxes; return; }
+  if (e.code === 'KeyE') { botMode = !botMode; return; }
+  if (JUMP_KEYS.has(e.code)) { e.preventDefault(); if (!e.repeat) press(); }
+}
 function keyUp(e) { if (JUMP_KEYS.has(e.code)) { e.preventDefault(); release(); } }
 for (const tgt of [window, document, cv]) { tgt.addEventListener('keydown', keyDown); tgt.addEventListener('keyup', keyUp); }
 cv.addEventListener('mousedown', pointerDown);
 window.addEventListener('mouseup', release);
 cv.addEventListener('touchstart', e => pointerDown(e), { passive: false });
-window.addEventListener('touchend', e => { if (state !== 'menu' && !infoOpen) e.preventDefault(); release(); }, { passive: false });
+window.addEventListener('touchend', e => { if (state !== 'menu' && !infoOpen && !settingsOpen) e.preventDefault(); release(); }, { passive: false });
 document.getElementById('infoClose').addEventListener('click', closeInfo);
 window.addEventListener('blur', release);
 
+// ----- settings menu ------------------------------------------------------
+function buildSettings() {
+  const box = document.getElementById('setModes'); box.innerHTML = '';
+  MODES.forEach(m => {
+    const label = document.createElement('label');
+    const cb = document.createElement('input'); cb.type = 'checkbox'; cb.checked = !!settings.modes[m];
+    cb.addEventListener('change', () => {
+      settings.modes[m] = cb.checked;
+      if (!MODES.some(x => settings.modes[x])) { settings.modes['cube'] = true; buildSettings(); }
+      saveSettings();
+    });
+    label.appendChild(cb); label.appendChild(document.createTextNode(' ' + m.toUpperCase()));
+    box.appendChild(label);
+  });
+  const sp = document.getElementById('setSpeed'); sp.checked = settings.speed;
+}
+function openSettings() { settingsOpen = true; buildSettings(); settingsEl.style.display = 'flex'; }
+function closeSettings() { settingsOpen = false; settingsEl.style.display = 'none'; cv.focus(); }
+document.getElementById('setClose').addEventListener('click', closeSettings);
+document.getElementById('setSpeed').addEventListener('change', e => { settings.speed = e.target.checked; saveSettings(); });
+document.getElementById('setBtn').addEventListener('click', openSettings);
+
 // ----- difficulty menu ----------------------------------------------------
-function startGame(d) { diff = d; menu.style.display = 'none'; reset(); cv.focus(); window.focus(); }
+function startGame(d) { diff = d; botMode = !!d.inv; menu.style.display = 'none'; reset(); cv.focus(); window.focus(); }
 function showMenu() { state = 'menu'; menu.style.display = 'flex'; document.getElementById('menuBest').textContent = Math.floor(best / 10); }
 const diffBtns = document.getElementById('diffBtns');
 DIFFS.forEach(d => {
   const b = document.createElement('button');
   b.style.background = d.col;
-  b.innerHTML = d.name;
+  b.innerHTML = d.name + (d.inv ? ' <small>bot plays · humanly impossible</small>' : '');
   b.addEventListener('click', () => startGame(d));
   diffBtns.appendChild(b);
 });
 
-reset(); showMenu(); loop();
+resize(); reset(); showMenu(); loop();
 </script>
 </body>
 </html>
