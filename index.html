@@ -209,7 +209,7 @@ function switchMode(to) {
 // ----- spawning -----------------------------------------------------------
 function spawn() {
   if (score - lastModeSwitch > MODE_LEN) {
-    obstacles.push({ type: 'portal', x: W + 40, w: 34, h: 180, to: MODES[(modeIndex + 1) % MODES.length] });
+    obstacles.push({ type: 'portal', x: W + 40, w: 34, h: GROUND - CEIL, to: MODES[(modeIndex + 1) % MODES.length] });
     lastModeSwitch = score; spawnTimer = nextSpacing(); return;
   }
   if (GROUND_MODES.has(player.mode)) {
@@ -316,15 +316,29 @@ function nextGapCenter() {
 
 // drives the player in Auto difficulty. Returns a virtual "hold" for the
 // flying modes, or null when there is nothing to steer this frame.
+// auto difficulty: tap jump orbs we're within reach of (skip gravity-flip & slam orbs)
+function autoUseOrbs() {
+  const cx = player.x + player.size / 2, cy = player.y + player.size / 2, reach = (player.size * 0.55) ** 2;
+  for (const o of orbs) {
+    if (o.used || (o.kind !== 'yellow' && o.kind !== 'pink' && o.kind !== 'red')) continue;
+    const dx = cx - o.x, dy = cy - o.y;
+    if (dx * dx + dy * dy < (o.r + 6) ** 2 + reach) activateOrb(o);
+  }
+}
+
 function autoPilot() {
   const s = player.size, m = player.mode, gd = player.gravityDir;
+  autoUseOrbs();
   if (GROUND_MODES.has(m)) {
     // hop hazards on whichever surface gravity sticks us to
     if (!player.onGround) return null;
+    // jump early enough that the whole jump-arc clears the obstacle — scaled to current speed,
+    // so the cube lands well past the spike instead of dropping onto it at slow speeds
+    const arc = (2 * Math.abs(JUMP) / GRAVITY) * speed, trigger = Math.max(20, arc - 100);
     for (const o of obstacles) {
       const d = o.x - (player.x + s);
       const threat = gd > 0 ? ((o.type === 'spike' && !o.ceil) || o.type === 'block') : (o.type === 'spike' && o.ceil);
-      if (threat && d > 0 && d < 95) { jumpNow(); break; }
+      if (threat && d > 0 && d < trigger) { jumpNow(); break; }
     }
     return null;
   }
