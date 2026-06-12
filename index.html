@@ -197,7 +197,7 @@ function spiderTeleport() {
 function switchMode(to) {
   trail = [];
   player.mode = to; player.vy = 0; player.gravityDir = 1; player.holdTime = 0;
-  if (to === 'wave' || to === 'ship') speedMult = 1.0;   // no speed changes in these modes
+  if (to === 'wave' || to === 'ship' || to === 'spider') speedMult = 1.0;   // no speed changes in these modes
   if (GROUND_MODES.has(to)) { player.onGround = false; player.rot = 0; }
   else if (to === 'spider' || to === 'ball') player.y = GROUND - player.size;
   // clear the track ahead so leftover obstacles from the previous mode can't cause an unfair death
@@ -223,6 +223,12 @@ function spawn() {
       if (Math.random() < 0.7) obstacles.push({ type: 'spike', x: cx, w: 40, h: 40, ceil: true });
       else { obstacles.push({ type: 'spike', x: cx, w: 40, h: 40, ceil: true }); obstacles.push({ type: 'spike', x: cx + 44, w: 40, h: 40, ceil: true }); }
     }
+  } else if (player.mode === 'ball') {
+    // ball rolls on floor/ceiling and flips to dodge spikes — put spikes on ONE
+    // surface per spawn so the opposite surface is always a safe place to be
+    const ceil = Math.random() < 0.5;
+    obstacles.push({ type: 'spike', x: W + 40, w: 40, h: 40, ceil });
+    if (Math.random() < diff.dbl) obstacles.push({ type: 'spike', x: W + 84, w: 40, h: 40, ceil });
   } else if (player.mode === 'spider') {
     // spider clings to floor or ceiling, so the gap must touch one of them
     const gap = diff.gap, floor = Math.random() < 0.5;
@@ -249,6 +255,7 @@ function nextSpacing() {
   const jumpDist = (2 * Math.abs(JUMP) / GRAVITY) * speed;
   let px;
   if (GROUND_MODES.has(m)) px = jumpDist * (1.08 + diff.dens * 0.7) + Math.random() * jumpDist * 0.35;
+  else if (m === 'ball') px = Math.max(200, speed * 24 * (0.7 + diff.dens)) + Math.random() * 90;   // room to flip surfaces
   else if (m === 'wave') px = Math.max(150, speed * 13 * (0.6 + diff.dens)) + Math.random() * 80;
   else px = Math.max(170, speed * 14 * (0.6 + diff.dens)) + Math.random() * 90;
   lastSpacing = px;
@@ -262,7 +269,7 @@ function spawnOrb() {
 }
 
 function spawnSpeed() {
-  if (player.mode === 'wave' || player.mode === 'ship') return;   // no speed portals here
+  if (player.mode === 'wave' || player.mode === 'ship' || player.mode === 'spider') return;   // no speed portals here
   const opts = SPEEDS.filter(v => v !== speedMult);
   obstacles.push({ type: 'speed', x: W + 40, mult: opts[Math.floor(Math.random() * opts.length)], used: false });
 }
@@ -330,26 +337,28 @@ function autoPilot() {
   const s = player.size, m = player.mode, gd = player.gravityDir;
   autoUseOrbs();
   if (GROUND_MODES.has(m)) {
-    // hop hazards on whichever surface gravity sticks us to
     if (!player.onGround) return null;
-    // jump early enough that the whole jump-arc clears the obstacle — scaled to current speed,
-    // so the cube lands well past the spike instead of dropping onto it at slow speeds
-    const arc = (2 * Math.abs(JUMP) / GRAVITY) * speed, trigger = Math.max(20, arc - 100);
-    for (const o of obstacles) {
-      const d = o.x - (player.x + s);
-      const threat = gd > 0 ? ((o.type === 'spike' && !o.ceil) || o.type === 'block') : (o.type === 'spike' && o.ceil);
-      if (threat && d > 0 && d < trigger) { jumpNow(); break; }
-    }
+    const arc = (2 * Math.abs(JUMP) / GRAVITY) * speed;   // horizontal jump distance at this speed
+    const isThreat = o => gd > 0 ? ((o.type === 'spike' && !o.ceil) || o.type === 'block') : (o.type === 'spike' && o.ceil);
+    let nearD = Infinity;
+    for (const o of obstacles) { if (!isThreat(o)) continue; const d = o.x - (player.x + s); if (d > 0 && d < nearD) nearD = d; }
+    if (nearD === Infinity) return null;
+    // widen to cover a bunched-up cluster (e.g. double spikes) so one jump clears all of it
+    let farEdge = nearD;
+    for (const o of obstacles) { if (!isThreat(o)) continue; const d = o.x - (player.x + s); if (d >= nearD - 1 && d <= nearD + 60) farEdge = Math.max(farEdge, d + (o.w || 40)); }
+    // jump so the arc's apex sits over the cluster centre — naturally earlier at high speed, later at low speed
+    if (nearD <= arc / 2 - (farEdge - nearD) / 2) jumpNow();
+    return null;
+  }
+  if (m === 'ball') {            // flip to the opposite surface before a spike on our current one
+    if (!player.onGround) return null;
+    const onFloor = gd > 0, mine = o => o.type === 'spike' && (onFloor ? !o.ceil : o.ceil);
+    for (const o of obstacles) { if (!mine(o)) continue; const d = o.x - (player.x + s); if (d > 0 && d < speed * 26) { player.gravityDir *= -1; player.onGround = false; break; } }
     return null;
   }
   const c = nextGapCenter();
   if (c === null) return null;
   const cy = player.y + s / 2;
-  if (m === 'ball') {            // flip gravity toward the gap
-    if (gd > 0 && cy > c + 25) { player.gravityDir = -1; player.onGround = false; }
-    else if (gd < 0 && cy < c - 25) { player.gravityDir = 1; player.onGround = false; }
-    return null;
-  }
   if (m === 'spider') {          // ride the surface the gap touches
     const want = c > (CEIL + GROUND) / 2 ? 1 : -1;
     if (gd !== want) { player.gravityDir = want; spiderTeleport(); }
