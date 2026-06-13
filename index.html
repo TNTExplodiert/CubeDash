@@ -31,6 +31,16 @@
     padding: 9px 16px; font-size: 14px; cursor: pointer; }
   #menu .mbtn:hover { background: #34346a; }
   #menu .foot { display: block; margin-top: 16px; color: #7e8ac0; font-size: 13px; }
+  #device { position: fixed; inset: 0; display: none; align-items: center; justify-content: center; background: rgba(8,8,20,.95); z-index: 9; }
+  #device .mcard { text-align: center; color: #dfe6ff; padding: 24px; }
+  #device h1 { font-size: 40px; margin: 0 0 6px; color: #fff; letter-spacing: 2px; text-shadow: 0 0 20px rgba(80,120,255,.7); }
+  #device p { margin: 0 0 20px; color: #9fb4ff; font-size: 19px; }
+  #devBtns { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+  #devBtns button { padding: 16px 22px; border: none; border-radius: 10px; font-size: 18px; font-weight: 700; cursor: pointer; background: #3a4ab0; color: #fff; min-width: 120px; transition: transform .08s; }
+  #devBtns button:hover { transform: scale(1.05); background: #4a5ad0; }
+  #touchCtrls { position: fixed; top: 8px; left: 50%; transform: translateX(-50%); display: none; gap: 8px; z-index: 7; }
+  #touchCtrls button { background: rgba(18,20,42,.85); color: #cfe0ff; border: 2px solid #ff5a5a; border-radius: 9px; padding: 8px 12px; font-size: 13px; font-weight: 700; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+  #touchCtrls button.on { border-color: #43e06a; color: #b8ffc8; background: rgba(20,40,26,.85); }
   #info, #settings { position: fixed; inset: 0; display: none; align-items: center; justify-content: center;
     background: rgba(6,6,16,.85); z-index: 10; padding: 18px; box-sizing: border-box; }
   #info .card, #settings .card { background: #161630; border: 1px solid #3a3a6a; border-radius: 12px; max-width: 560px;
@@ -58,8 +68,23 @@
   <p>Choose your difficulty</p>
   <div id="diffBtns"></div>
   <button id="setBtn" class="mbtn">⚙ Settings</button>
-  <span class="foot">Best: <b id="menuBest">0</b> &nbsp;·&nbsp; tap = jump · hold = fly · E = bot · F = hitboxes · Esc = menu</span>
+  <button id="devBtn" class="mbtn">📱 Gerät: <span id="devLabel">—</span> (ändern)</button>
+  <span class="foot">Best: <b id="menuBest">0</b> &nbsp;·&nbsp; tap = jump · hold = fly · E = bot · F = hitboxes · C = noclip · Esc = menu</span>
 </div></div>
+<div id="device"><div class="mcard">
+  <h1>CUBE DASH</h1>
+  <p>Was ist dein Gerät?</p>
+  <div id="devBtns">
+    <button data-d="pc">💻 PC</button>
+    <button data-d="tablet">📱 Tablet</button>
+    <button data-d="phone">📲 Phone</button>
+  </div>
+</div></div>
+<div id="touchCtrls">
+  <button data-t="bot">🤖 Bot</button>
+  <button data-t="hit">▣ Hitbox</button>
+  <button data-t="clip">✦ NoClip</button>
+</div>
 <div id="info"><div class="card">
   <h2>Cube Dash — How to Play</h2>
   <p>Survive as long as you can. Fly through <b>portals</b> to change game mode. Your best score is saved automatically.</p>
@@ -160,8 +185,11 @@ const DIFFS = [
 ];
 let diff = DIFFS[2];
 
-// high score persists in localStorage
-let best = 0; try { best = parseInt(localStorage.getItem('cubeDashBest')) || 0; } catch (e) {}
+// high scores persist per (difficulty + settings) bucket in localStorage
+let bests = {}; try { bests = JSON.parse(localStorage.getItem('cubeDashBests')) || {}; } catch (e) {}
+function saveBests() { try { localStorage.setItem('cubeDashBests', JSON.stringify(bests)); } catch (e) {} }
+let device = ''; try { device = localStorage.getItem('cubeDashDevice') || ''; } catch (e) {}
+let noclip = false;
 
 // settings: which modes / orbs / pads / portals / hazards can appear
 let settings = { modes: {}, orbs: {}, pads: {}, speed: true, mini: true, big: true, grav: true, dual: true, spikes: true, blocks: true };
@@ -178,8 +206,20 @@ try {
   }
 } catch (e) {}
 function saveSettings() { try { localStorage.setItem('cubeDashSettings', JSON.stringify(settings)); } catch (e) {} }
-// turning spikes or blocks off is "practice" — the best score won't be saved
-function scoreSaves() { return settings.spikes && settings.blocks; }
+// a unique key per difficulty + full settings combo, so each combination keeps its own high score
+function settingsSig() {
+  let s = '';
+  for (const m of MODES) s += settings.modes[m] ? '1' : '0';
+  for (const k of ORB_KINDS) s += settings.orbs[k] ? '1' : '0';
+  for (const k of PAD_KINDS) s += settings.pads[k] ? '1' : '0';
+  for (const k of ['mini', 'big', 'grav', 'dual', 'speed', 'spikes', 'blocks']) s += settings[k] ? '1' : '0';
+  return s;
+}
+function bestKeyFor(d) { return d.name + '#' + settingsSig(); }
+function bestFor(d) { return bests[bestKeyFor(d)] || 0; }
+function getBest() { return bestFor(diff); }
+// score only counts when played straight: no bot driving and no noclip
+function saveable() { return !noclip && !botMode; }
 
 let player, players, dual, obstacles, orbs, particles, baseSpeed, speedMult, speed, score, state, spawnTimer, orbTimer, speedTimer, padTimer, gimmickTimer, hue, modeIndex, lastModeSwitch, grace, lastGapTop, lastSpacing;
 let holding = false, effHold = false, infoOpen = false, settingsOpen = false, showHitboxes = false, botMode = false;
@@ -435,7 +475,7 @@ function activatePad(p, o) {
 }
 
 function aabb(ax, ay, aw, ah, bx, by, bw, bh) { return ax < bx + bw && ax + aw > bx && ay < by + bh && ay + ah > by; }
-function die() { if (state === 'dead' || grace > 0 || diff.inv) return; state = 'dead'; if (scoreSaves() && score > best) { best = score; try { localStorage.setItem('cubeDashBest', String(best)); } catch (e) {} } for (const p of players) burst(p.x + p.size / 2, p.y + p.size / 2, hue, 40); }
+function die() { if (state === 'dead' || grace > 0 || diff.inv || noclip) return; state = 'dead'; if (saveable() && score > getBest()) { bests[bestKeyFor(diff)] = score; saveBests(); } for (const p of players) burst(p.x + p.size / 2, p.y + p.size / 2, hue, 40); }
 
 function groundLand(p) {
   const s = p.size;
@@ -718,18 +758,23 @@ function draw() {
   if (showHitboxes) drawHitboxes();
 
   ctx.fillStyle = '#dfe6ff'; ctx.font = 'bold 22px Segoe UI, sans-serif'; ctx.textAlign = 'left';
-  ctx.fillText('Score: ' + Math.floor(score / 10), 20, 36); ctx.fillText('Best: ' + Math.floor(best / 10), 20, 64);
+  ctx.fillText('Score: ' + Math.floor(score / 10), 20, 36); ctx.fillText('Best: ' + Math.floor(getBest() / 10), 20, 64);
   ctx.font = 'bold 14px Segoe UI, sans-serif'; ctx.fillStyle = diff.col; ctx.fillText(diff.name.toUpperCase(), 22, 86);
-  if (!scoreSaves()) { ctx.fillStyle = '#ffb04a'; ctx.font = 'bold 12px Segoe UI, sans-serif'; ctx.fillText("PRACTICE — score won't save", 22, 108); }
+  if (!saveable()) { ctx.fillStyle = '#ffb04a'; ctx.font = 'bold 12px Segoe UI, sans-serif'; ctx.fillText('NO SAVE — ' + (botMode && noclip ? 'bot+noclip' : botMode ? 'bot' : 'noclip') + ' on', 22, 108); }
   ctx.textAlign = 'right'; ctx.fillStyle = `hsl(${(hue + 200) % 360},90%,72%)`; ctx.fillText(player.mode.toUpperCase() + (dual ? ' ×2' : '') + ' MODE', W - 20, 36);
   ctx.fillStyle = `hsl(${speedHue(speedMult)},90%,68%)`; ctx.fillText('x' + speedMult + ' speed', W - 20, 64);
   ctx.fillStyle = botMode ? '#37d6ff' : '#7e8ac0'; ctx.font = 'bold 13px Segoe UI, sans-serif'; ctx.fillText((botMode ? '🤖 BOT' : '🎮 YOU') + ' (E)', W - 20, 88);
-  if (showHitboxes) { ctx.fillStyle = '#7fff9f'; ctx.fillText('HITBOXES ON (F)', W - 20, 110); }
+  let ry = 110;
+  if (noclip) { ctx.fillStyle = '#ff5cf0'; ctx.fillText('✦ NOCLIP (C)', W - 20, ry); ry += 22; }
+  if (showHitboxes) { ctx.fillStyle = '#7fff9f'; ctx.fillText('HITBOXES ON (F)', W - 20, ry); }
+  // keep the on-screen touch buttons in sync (tablet/phone only)
+  touchCtrls.style.display = (device && device !== 'pc' && state === 'play') ? 'flex' : 'none';
+  ctrlBtns.bot.classList.toggle('on', botMode); ctrlBtns.hit.classList.toggle('on', showHitboxes); ctrlBtns.clip.classList.toggle('on', noclip);
 
   if (state === 'dead') {
     ctx.fillStyle = 'rgba(0,0,0,.55)'; ctx.fillRect(0, 0, W, H);
     ctx.fillStyle = '#fff'; ctx.textAlign = 'center'; ctx.font = 'bold 48px Segoe UI, sans-serif'; ctx.fillText('GAME OVER', W / 2, H / 2 - 20);
-    ctx.font = '22px Segoe UI, sans-serif'; ctx.fillText('Score: ' + Math.floor(score / 10) + '   •   Best: ' + Math.floor(best / 10), W / 2, H / 2 + 20);
+    ctx.font = '22px Segoe UI, sans-serif'; ctx.fillText('Score: ' + Math.floor(score / 10) + '   •   Best: ' + Math.floor(getBest() / 10), W / 2, H / 2 + 20);
     ctx.fillStyle = '#9fb4ff'; ctx.fillText('Press SPACE / CLICK to restart', W / 2, H / 2 + 60);
     ctx.textBaseline = 'middle';
     for (const [rect, label] of [[infoBtnRect(), 'ⓘ  Info / Help'], [diffBtnRect(), '≡  Difficulty'], [setGOBtnRect(), '⚙  Settings']]) {
@@ -815,6 +860,7 @@ function keyDown(e) {
   if (e.code === 'Escape') { if (settingsOpen) closeSettings(); else if (infoOpen) closeInfo(); else if (state === 'play') showMenu(); return; }
   if (e.code === 'KeyF') { showHitboxes = !showHitboxes; return; }
   if (e.code === 'KeyE') { botMode = !botMode; return; }
+  if (e.code === 'KeyC') { noclip = !noclip; return; }
   if (JUMP_KEYS.has(e.code)) { e.preventDefault(); if (!e.repeat) press(); }
 }
 function keyUp(e) { if (JUMP_KEYS.has(e.code)) { e.preventDefault(); release(); } }
@@ -865,19 +911,41 @@ function closeSettings() { settingsOpen = false; settingsEl.style.display = 'non
 document.getElementById('setClose').addEventListener('click', closeSettings);
 document.getElementById('setBtn').addEventListener('click', openSettings);
 
+// ----- device screen ------------------------------------------------------
+const hint = document.getElementById('hint');
+const deviceEl = document.getElementById('device');
+const touchCtrls = document.getElementById('touchCtrls');
+function updateDevLabel() { const el = document.getElementById('devLabel'); if (el) el.textContent = device ? device.toUpperCase() : '—'; hint.style.display = (!device || device === 'pc') ? 'block' : 'none'; }
+function showDevice() { state = 'menu'; menu.style.display = 'none'; deviceEl.style.display = 'flex'; }
+function chooseDevice(d) { device = d; try { localStorage.setItem('cubeDashDevice', d); } catch (e) {} deviceEl.style.display = 'none'; updateDevLabel(); showMenu(); }
+document.querySelectorAll('#devBtns button').forEach(b => b.addEventListener('click', () => chooseDevice(b.dataset.d)));
+document.getElementById('devBtn').addEventListener('click', showDevice);
+
+// on-screen toggles for tablet/phone (use touchstart/mousedown so the global touchend can't eat the tap)
+const ctrlBtns = {};
+touchCtrls.querySelectorAll('button').forEach(b => {
+  ctrlBtns[b.dataset.t] = b;
+  const toggle = e => { e.preventDefault(); e.stopPropagation(); if (b.dataset.t === 'bot') botMode = !botMode; else if (b.dataset.t === 'hit') showHitboxes = !showHitboxes; else if (b.dataset.t === 'clip') noclip = !noclip; };
+  b.addEventListener('touchstart', toggle, { passive: false });
+  b.addEventListener('mousedown', toggle);
+});
+
 // ----- difficulty menu ----------------------------------------------------
 function startGame(d) { diff = d; botMode = !!d.inv; menu.style.display = 'none'; reset(); cv.focus(); window.focus(); }
-function showMenu() { state = 'menu'; menu.style.display = 'flex'; document.getElementById('menuBest').textContent = Math.floor(best / 10); }
+function showMenu() { state = 'menu'; menu.style.display = 'flex'; updateDevLabel(); refreshDiffBtns(); document.getElementById('menuBest').textContent = Math.floor(getBest() / 10); }
 const diffBtns = document.getElementById('diffBtns');
+const diffEls = [];
 DIFFS.forEach(d => {
   const b = document.createElement('button');
   b.style.background = d.col;
-  b.innerHTML = d.name + (d.inv ? ' <small>bot plays · humanly impossible</small>' : '');
   b.addEventListener('click', () => startGame(d));
-  diffBtns.appendChild(b);
+  diffBtns.appendChild(b); diffEls.push({ d, b });
 });
+function refreshDiffBtns() {
+  for (const { d, b } of diffEls) b.innerHTML = d.name + ' <small>' + (d.inv ? 'bot plays · no save' : 'best ' + Math.floor(bestFor(d) / 10)) + '</small>';
+}
 
-resize(); reset(); showMenu(); loop();
+resize(); reset(); showDevice(); loop();
 </script>
 </body>
 </html>
