@@ -10,8 +10,8 @@
     background: #0c0c18; font-family: 'Segoe UI', system-ui, sans-serif;
     user-select: none; -webkit-user-select: none; touch-action: manipulation;
   }
-  #wrap { position: fixed; inset: 0; }
-  canvas { position: absolute; inset: 0; width: 100%; height: 100%; background: #11112a; outline: none; display: block; }
+  #wrap { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; }
+  canvas { background: #11112a; outline: none; display: block; border-radius: 8px; box-shadow: 0 0 40px rgba(80,120,255,.4); }
   #hint {
     position: fixed; top: 10px; left: 50%; transform: translateX(-50%);
     color: #9fb4ff; font-size: 13px; letter-spacing: .4px; opacity: .85; text-align: center; z-index: 6;
@@ -881,9 +881,13 @@ function loop() { update(); draw(); requestAnimationFrame(loop); }
 
 // ----- responsive canvas --------------------------------------------------
 function resize() {
-  const w = Math.max(480, Math.min(window.innerWidth, 1920));
-  const h = Math.max(320, Math.min(window.innerHeight, 1080));
-  cv.width = w; cv.height = h;
+  // fit the window but keep a sane aspect ratio (no ultra-flat ultrawide strip), then letterbox
+  const ww = window.innerWidth, wh = window.innerHeight, minAR = 1.4, maxAR = 1.9;
+  const ar = Math.max(minAR, Math.min(maxAR, ww / wh));
+  let w, h;
+  if (ww / wh > ar) { h = wh; w = h * ar; } else { w = ww; h = w / ar; }
+  const sc = Math.min(1, 1600 / w, 900 / h); w = Math.round(w * sc); h = Math.round(h * sc);
+  cv.width = w; cv.height = h; cv.style.width = w + 'px'; cv.style.height = h + 'px';
   W = w; H = h; GROUND = H - 60;
   if (players) for (const p of players) if (GROUND_MODES.has(p.mode) && p.gravityDir > 0) p.y = Math.min(p.y, GROUND - p.size);
 }
