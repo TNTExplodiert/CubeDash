@@ -881,12 +881,12 @@ function loop() { update(); draw(); requestAnimationFrame(loop); }
 
 // ----- responsive canvas --------------------------------------------------
 function resize() {
-  // fit the window but keep a sane aspect ratio (no ultra-flat ultrawide strip), then letterbox
-  const ww = window.innerWidth, wh = window.innerHeight, minAR = 1.4, maxAR = 1.9;
+  // fit the window but keep a sane aspect ratio (no ultra-flat strip), then letterbox the rest
+  const ww = window.innerWidth, wh = window.innerHeight, minAR = 1.4, maxAR = 2.1;
   const ar = Math.max(minAR, Math.min(maxAR, ww / wh));
   let w, h;
   if (ww / wh > ar) { h = wh; w = h * ar; } else { w = ww; h = w / ar; }
-  const sc = Math.min(1, 1600 / w, 900 / h); w = Math.round(w * sc); h = Math.round(h * sc);
+  const sc = Math.min(1, 2560 / w, 1440 / h); w = Math.round(w * sc); h = Math.round(h * sc);
   cv.width = w; cv.height = h; cv.style.width = w + 'px'; cv.style.height = h + 'px';
   W = w; H = h; GROUND = H - 60;
   if (players) for (const p of players) if (GROUND_MODES.has(p.mode) && p.gravityDir > 0) p.y = Math.min(p.y, GROUND - p.size);
