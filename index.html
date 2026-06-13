@@ -119,6 +119,8 @@
   <div id="setPads" class="grid"></div>
   <h3>Portals &amp; speed</h3>
   <div id="setPortals" class="grid"></div>
+  <h3>Hazards <span style="font-size:11px;color:#ffb04a;text-transform:none;letter-spacing:0">(turning these off = practice, no high score)</span></h3>
+  <div id="setHazards" class="grid"></div>
   <p style="color:#8a96cc;font-size:13px;margin-top:14px">Cube always starts the run. Gravity portals always keep ~4 blocks of clear space around them. Changes are saved automatically.</p>
   <button id="setClose">✕ Close</button>
 </div></div>
@@ -161,8 +163,8 @@ let diff = DIFFS[2];
 // high score persists in localStorage
 let best = 0; try { best = parseInt(localStorage.getItem('cubeDashBest')) || 0; } catch (e) {}
 
-// settings: which modes / orbs / pads / portals can appear
-let settings = { modes: {}, orbs: {}, pads: {}, speed: true, mini: true, big: true, grav: true, dual: true };
+// settings: which modes / orbs / pads / portals / hazards can appear
+let settings = { modes: {}, orbs: {}, pads: {}, speed: true, mini: true, big: true, grav: true, dual: true, spikes: true, blocks: true };
 MODES.forEach(m => settings.modes[m] = true);
 ORB_KINDS.forEach(k => settings.orbs[k] = true);
 PAD_KINDS.forEach(k => settings.pads[k] = true);
@@ -172,10 +174,12 @@ try {
     if (s.modes) MODES.forEach(m => { if (typeof s.modes[m] === 'boolean') settings.modes[m] = s.modes[m]; });
     if (s.orbs) ORB_KINDS.forEach(k => { if (typeof s.orbs[k] === 'boolean') settings.orbs[k] = s.orbs[k]; });
     if (s.pads) PAD_KINDS.forEach(k => { if (typeof s.pads[k] === 'boolean') settings.pads[k] = s.pads[k]; });
-    for (const k of ['speed', 'mini', 'big', 'grav', 'dual']) if (typeof s[k] === 'boolean') settings[k] = s[k];
+    for (const k of ['speed', 'mini', 'big', 'grav', 'dual', 'spikes', 'blocks']) if (typeof s[k] === 'boolean') settings[k] = s[k];
   }
 } catch (e) {}
 function saveSettings() { try { localStorage.setItem('cubeDashSettings', JSON.stringify(settings)); } catch (e) {} }
+// turning spikes or blocks off is "practice" — the best score won't be saved
+function scoreSaves() { return settings.spikes && settings.blocks; }
 
 let player, players, dual, obstacles, orbs, particles, baseSpeed, speedMult, speed, score, state, spawnTimer, orbTimer, speedTimer, padTimer, gimmickTimer, hue, modeIndex, lastModeSwitch, grace, lastGapTop, lastSpacing;
 let holding = false, effHold = false, infoOpen = false, settingsOpen = false, showHitboxes = false, botMode = false;
@@ -311,12 +315,14 @@ function spawn() {
     lastModeSwitch = score; spawnTimer = nextSpacing(); return;
   }
   if (GROUND_MODES.has(player.mode)) {
-    const r = Math.random();
-    if (r < diff.dbl) { obstacles.push({ type: 'spike', x: W + 40, w: 40, h: 40, ceil: false }); obstacles.push({ type: 'spike', x: W + 84, w: 40, h: 40, ceil: false }); }
-    else if (r < diff.dbl + 0.13) { const bh = 40 + Math.floor(Math.random() * 2) * 40; obstacles.push({ type: 'block', x: W + 40, w: 50, h: bh, ceil: false }); }
-    else obstacles.push({ type: 'spike', x: W + 40, w: 40, h: 40, ceil: false });
+    const sp = settings.spikes, bl = settings.blocks, r = Math.random();
+    const block = () => { const bh = 40 + Math.floor(Math.random() * 2) * 40; obstacles.push({ type: 'block', x: W + 40, w: 50, h: bh, ceil: false }); };
+    if (sp && r < diff.dbl) { obstacles.push({ type: 'spike', x: W + 40, w: 40, h: 40, ceil: false }); obstacles.push({ type: 'spike', x: W + 84, w: 40, h: 40, ceil: false }); }
+    else if (bl && r < diff.dbl + 0.13) block();
+    else if (sp) obstacles.push({ type: 'spike', x: W + 40, w: 40, h: 40, ceil: false });
+    else if (bl) block();   // spikes off but blocks on: still give the ground something
     // roof parkour: hanging spikes from the ceiling (the dual mirror & inverted players dodge these)
-    if (Math.random() < diff.ceil) {
+    if (sp && Math.random() < diff.ceil) {
       const cx = W + 40 + (Math.random() < 0.5 ? 90 : 0);
       if (Math.random() < 0.7) obstacles.push({ type: 'spike', x: cx, w: 40, h: 40, ceil: true });
       else { obstacles.push({ type: 'spike', x: cx, w: 40, h: 40, ceil: true }); obstacles.push({ type: 'spike', x: cx + 44, w: 40, h: 40, ceil: true }); }
@@ -324,9 +330,11 @@ function spawn() {
   } else if (player.mode === 'ball') {
     // ball rolls on floor/ceiling and flips to dodge spikes — put spikes on ONE
     // surface per spawn so the opposite surface is always a safe place to be
-    const ceil = Math.random() < 0.5;
-    obstacles.push({ type: 'spike', x: W + 40, w: 40, h: 40, ceil });
-    if (Math.random() < diff.dbl) obstacles.push({ type: 'spike', x: W + 84, w: 40, h: 40, ceil });
+    if (settings.spikes) {
+      const ceil = Math.random() < 0.5;
+      obstacles.push({ type: 'spike', x: W + 40, w: 40, h: 40, ceil });
+      if (Math.random() < diff.dbl) obstacles.push({ type: 'spike', x: W + 84, w: 40, h: 40, ceil });
+    }
   } else if (player.mode === 'spider') {
     // spider clings to floor or ceiling, so the gap must touch one of them
     const gap = diff.gap, floor = Math.random() < 0.5;
@@ -427,7 +435,7 @@ function activatePad(p, o) {
 }
 
 function aabb(ax, ay, aw, ah, bx, by, bw, bh) { return ax < bx + bw && ax + aw > bx && ay < by + bh && ay + ah > by; }
-function die() { if (state === 'dead' || grace > 0 || diff.inv) return; state = 'dead'; if (score > best) { best = score; try { localStorage.setItem('cubeDashBest', String(best)); } catch (e) {} } for (const p of players) burst(p.x + p.size / 2, p.y + p.size / 2, hue, 40); }
+function die() { if (state === 'dead' || grace > 0 || diff.inv) return; state = 'dead'; if (scoreSaves() && score > best) { best = score; try { localStorage.setItem('cubeDashBest', String(best)); } catch (e) {} } for (const p of players) burst(p.x + p.size / 2, p.y + p.size / 2, hue, 40); }
 
 function groundLand(p) {
   const s = p.size;
@@ -556,7 +564,9 @@ function updatePlayer(p, hold) {
 // ----- update -------------------------------------------------------------
 function update() {
   if (state !== 'play') return;
-  score += 1; baseSpeed += diff.ramp; speed = baseSpeed * speedMult; hue = (hue + 0.4) % 360;
+  baseSpeed += diff.ramp; speed = baseSpeed * speedMult;
+  score += speed / diff.speed;   // faster scrolling = more points per frame
+  hue = (hue + 0.4) % 360;
   if (grace > 0) grace--;
   let hold = holding;
   if (botMode) { const ah = autoPilot(); if (ah !== null) hold = holding || ah; }
@@ -710,6 +720,7 @@ function draw() {
   ctx.fillStyle = '#dfe6ff'; ctx.font = 'bold 22px Segoe UI, sans-serif'; ctx.textAlign = 'left';
   ctx.fillText('Score: ' + Math.floor(score / 10), 20, 36); ctx.fillText('Best: ' + Math.floor(best / 10), 20, 64);
   ctx.font = 'bold 14px Segoe UI, sans-serif'; ctx.fillStyle = diff.col; ctx.fillText(diff.name.toUpperCase(), 22, 86);
+  if (!scoreSaves()) { ctx.fillStyle = '#ffb04a'; ctx.font = 'bold 12px Segoe UI, sans-serif'; ctx.fillText("PRACTICE — score won't save", 22, 108); }
   ctx.textAlign = 'right'; ctx.fillStyle = `hsl(${(hue + 200) % 360},90%,72%)`; ctx.fillText(player.mode.toUpperCase() + (dual ? ' ×2' : '') + ' MODE', W - 20, 36);
   ctx.fillStyle = `hsl(${speedHue(speedMult)},90%,68%)`; ctx.fillText('x' + speedMult + ' speed', W - 20, 64);
   ctx.fillStyle = botMode ? '#37d6ff' : '#7e8ac0'; ctx.font = 'bold 13px Segoe UI, sans-serif'; ctx.fillText((botMode ? '🤖 BOT' : '🎮 YOU') + ' (E)', W - 20, 88);
@@ -844,6 +855,9 @@ function buildSettings() {
   checkboxGroup('setPortals', [
     { key: 'mini', label: 'Mini portal' }, { key: 'big', label: 'Big portal' }, { key: 'grav', label: 'Gravity portal' },
     { key: 'dual', label: 'Dual portal' }, { key: 'speed', label: 'Speed portals' },
+  ], k => settings[k], (k, v) => settings[k] = v);
+  checkboxGroup('setHazards', [
+    { key: 'spikes', label: 'Spikes' }, { key: 'blocks', label: 'Blocks' },
   ], k => settings[k], (k, v) => settings[k] = v);
 }
 function openSettings() { settingsOpen = true; buildSettings(); settingsEl.style.display = 'flex'; }
