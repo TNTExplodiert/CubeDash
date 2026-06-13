@@ -363,17 +363,18 @@ function spawn() {
     if (ni !== modeIndex) obstacles.push({ type: 'portal', x: W + 40, w: 34, h: GROUND - CEIL, to: MODES[ni], toIdx: ni });
     lastModeSwitch = score; spawnTimer = nextSpacing(); return;
   }
+  const mini = player.gravMul > 1.0001;   // once mini, never spawn double spikes
   if (GROUND_MODES.has(player.mode)) {
     const sp = settings.spikes, bl = settings.blocks, r = Math.random();
     const block = () => { const bh = 40 + Math.floor(Math.random() * 2) * 40; obstacles.push({ type: 'block', x: W + 40, w: 50, h: bh, ceil: false }); };
-    if (sp && r < diff.dbl) { obstacles.push({ type: 'spike', x: W + 40, w: 40, h: 40, ceil: false }); obstacles.push({ type: 'spike', x: W + 84, w: 40, h: 40, ceil: false }); }
+    if (sp && !mini && r < diff.dbl) { obstacles.push({ type: 'spike', x: W + 40, w: 40, h: 40, ceil: false }); obstacles.push({ type: 'spike', x: W + 84, w: 40, h: 40, ceil: false }); }
     else if (bl && r < diff.dbl + 0.13) block();
     else if (sp) obstacles.push({ type: 'spike', x: W + 40, w: 40, h: 40, ceil: false });
     else if (bl) block();   // spikes off but blocks on: still give the ground something
     // roof parkour: hanging spikes from the ceiling (the dual mirror & inverted players dodge these)
     if (sp && Math.random() < diff.ceil) {
       const cx = W + 40 + (Math.random() < 0.5 ? 90 : 0);
-      if (Math.random() < 0.7) obstacles.push({ type: 'spike', x: cx, w: 40, h: 40, ceil: true });
+      if (mini || Math.random() < 0.7) obstacles.push({ type: 'spike', x: cx, w: 40, h: 40, ceil: true });
       else { obstacles.push({ type: 'spike', x: cx, w: 40, h: 40, ceil: true }); obstacles.push({ type: 'spike', x: cx + 44, w: 40, h: 40, ceil: true }); }
     }
   } else if (player.mode === 'ball') {
@@ -382,7 +383,7 @@ function spawn() {
     if (settings.spikes) {
       const ceil = Math.random() < 0.5;
       obstacles.push({ type: 'spike', x: W + 40, w: 40, h: 40, ceil });
-      if (Math.random() < diff.dbl) obstacles.push({ type: 'spike', x: W + 84, w: 40, h: 40, ceil });
+      if (!mini && Math.random() < diff.dbl) obstacles.push({ type: 'spike', x: W + 84, w: 40, h: 40, ceil });
     }
   } else if (player.mode === 'spider') {
     // spider clings to floor or ceiling, so the gap must touch one of them
@@ -771,7 +772,9 @@ function draw() {
   ctx.fillStyle = '#dfe6ff'; ctx.font = 'bold 22px Segoe UI, sans-serif'; ctx.textAlign = 'left';
   ctx.fillText('Score: ' + Math.floor(score / 10), 20, 36); ctx.fillText('Best: ' + Math.floor(getBest() / 10), 20, 64);
   ctx.font = 'bold 14px Segoe UI, sans-serif'; ctx.fillStyle = diff.col; ctx.fillText(diff.name.toUpperCase(), 22, 86);
-  if (!saveable()) { ctx.fillStyle = '#ffb04a'; ctx.font = 'bold 12px Segoe UI, sans-serif'; ctx.fillText('NO SAVE — ' + (botMode || noclip ? (botMode && noclip ? 'bot+noclip on' : botMode ? 'bot on' : 'noclip on') : 'bot/noclip used') + ' this run', 22, 108); }
+  let ly = 108; ctx.font = 'bold 12px Segoe UI, sans-serif';
+  if (!saveable()) { ctx.fillStyle = '#ffb04a'; ctx.fillText('NO SAVE — ' + (botMode || noclip ? (botMode && noclip ? 'bot+noclip on' : botMode ? 'bot on' : 'noclip on') : 'bot/noclip used') + ' this run', 22, ly); ly += 20; }
+  ctx.fillStyle = player.gravMul > 1.0001 ? '#ff9a3d' : '#9fb4ff'; ctx.fillText('GRAVITY ×' + (Math.round(player.gravMul * 100) / 100) + '  (' + (Math.round(GRAVITY * player.gravMul * 100) / 100) + ')', 22, ly);
   ctx.textAlign = 'right'; ctx.fillStyle = `hsl(${(hue + 200) % 360},90%,72%)`; ctx.fillText(player.mode.toUpperCase() + (dual ? ' ×2' : '') + ' MODE', W - 20, 36);
   ctx.fillStyle = `hsl(${speedHue(speedMult)},90%,68%)`; ctx.fillText('x' + speedMult + ' speed', W - 20, 64);
   ctx.fillStyle = botMode ? '#37d6ff' : '#7e8ac0'; ctx.font = 'bold 13px Segoe UI, sans-serif'; ctx.fillText((botMode ? '🤖 BOT' : '🎮 YOU') + ' (E)', W - 20, 88);
