@@ -189,7 +189,7 @@ let diff = DIFFS[2];
 let bests = {}; try { bests = JSON.parse(localStorage.getItem('cubeDashBests')) || {}; } catch (e) {}
 function saveBests() { try { localStorage.setItem('cubeDashBests', JSON.stringify(bests)); } catch (e) {} }
 let device = ''; try { device = localStorage.getItem('cubeDashDevice') || ''; } catch (e) {}
-let noclip = false;
+let noclip = false, tainted = false;   // tainted = bot/noclip was used at any point this run
 
 // settings: which modes / orbs / pads / portals / hazards can appear
 let settings = { modes: {}, orbs: {}, pads: {}, speed: true, mini: true, big: true, grav: true, dual: true, spikes: true, blocks: true };
@@ -218,8 +218,9 @@ function settingsSig() {
 function bestKeyFor(d) { return d.name + '#' + settingsSig(); }
 function bestFor(d) { return bests[bestKeyFor(d)] || 0; }
 function getBest() { return bestFor(diff); }
-// score only counts when played straight: no bot driving and no noclip
-function saveable() { return !noclip && !botMode; }
+// score only counts when the whole run was played straight — bot/noclip used at any
+// point latches the run as tainted, so the score still won't save after turning it off
+function saveable() { return !tainted; }
 
 let player, players, dual, obstacles, orbs, particles, baseSpeed, speedMult, speed, score, state, spawnTimer, orbTimer, speedTimer, padTimer, gimmickTimer, hue, modeIndex, lastModeSwitch, grace, lastGapTop, lastSpacing;
 let holding = false, effHold = false, infoOpen = false, settingsOpen = false, showHitboxes = false, botMode = false;
@@ -247,7 +248,7 @@ function reset() {
   baseSpeed = diff.speed; speedMult = 1.0; speed = baseSpeed;
   score = 0; hue = 200; spawnTimer = 220; orbTimer = 90; speedTimer = 1200; padTimer = 180; gimmickTimer = 540;
   modeIndex = 0; lastModeSwitch = 0; grace = 0; lastGapTop = (CEIL + GROUND) / 2; lastSpacing = 260;
-  state = 'play';
+  tainted = false; state = 'play';
 }
 
 // ----- input --------------------------------------------------------------
@@ -604,6 +605,7 @@ function updatePlayer(p, hold) {
 // ----- update -------------------------------------------------------------
 function update() {
   if (state !== 'play') return;
+  if (botMode || noclip) tainted = true;   // latch the run as not-saveable
   baseSpeed += diff.ramp; speed = baseSpeed * speedMult;
   score += speed / diff.speed;   // faster scrolling = more points per frame
   hue = (hue + 0.4) % 360;
@@ -760,7 +762,7 @@ function draw() {
   ctx.fillStyle = '#dfe6ff'; ctx.font = 'bold 22px Segoe UI, sans-serif'; ctx.textAlign = 'left';
   ctx.fillText('Score: ' + Math.floor(score / 10), 20, 36); ctx.fillText('Best: ' + Math.floor(getBest() / 10), 20, 64);
   ctx.font = 'bold 14px Segoe UI, sans-serif'; ctx.fillStyle = diff.col; ctx.fillText(diff.name.toUpperCase(), 22, 86);
-  if (!saveable()) { ctx.fillStyle = '#ffb04a'; ctx.font = 'bold 12px Segoe UI, sans-serif'; ctx.fillText('NO SAVE — ' + (botMode && noclip ? 'bot+noclip' : botMode ? 'bot' : 'noclip') + ' on', 22, 108); }
+  if (!saveable()) { ctx.fillStyle = '#ffb04a'; ctx.font = 'bold 12px Segoe UI, sans-serif'; ctx.fillText('NO SAVE — ' + (botMode || noclip ? (botMode && noclip ? 'bot+noclip on' : botMode ? 'bot on' : 'noclip on') : 'bot/noclip used') + ' this run', 22, 108); }
   ctx.textAlign = 'right'; ctx.fillStyle = `hsl(${(hue + 200) % 360},90%,72%)`; ctx.fillText(player.mode.toUpperCase() + (dual ? ' ×2' : '') + ' MODE', W - 20, 36);
   ctx.fillStyle = `hsl(${speedHue(speedMult)},90%,68%)`; ctx.fillText('x' + speedMult + ' speed', W - 20, 64);
   ctx.fillStyle = botMode ? '#37d6ff' : '#7e8ac0'; ctx.font = 'bold 13px Segoe UI, sans-serif'; ctx.fillText((botMode ? '🤖 BOT' : '🎮 YOU') + ' (E)', W - 20, 88);
