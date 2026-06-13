@@ -58,6 +58,8 @@
   #settings .grid { display: flex; flex-wrap: wrap; }
   #settings label { display: inline-flex; align-items: center; gap: 7px; font-size: 14px; margin: 5px 14px 5px 0; cursor: pointer; min-width: 110px; }
   #settings input { width: 17px; height: 17px; accent-color: #6a7ad0; }
+  #settings input[type=number] { width: 60px; height: 26px; padding: 2px 5px; background: #0e0e22; color: #dfe6ff; border: 1px solid #3a3a6a; border-radius: 6px; }
+  #settings #setLimits label { min-width: 200px; justify-content: space-between; }
 </style>
 </head>
 <body>
@@ -146,6 +148,8 @@
   <div id="setPortals" class="grid"></div>
   <h3>Hazards <span style="font-size:11px;color:#ffb04a;text-transform:none;letter-spacing:0">(turning these off = practice, no high score)</span></h3>
   <div id="setHazards" class="grid"></div>
+  <h3>Mini / Big limits</h3>
+  <div id="setLimits" class="grid"></div>
   <p style="color:#8a96cc;font-size:13px;margin-top:14px">Cube always starts the run. Gravity portals always keep ~4 blocks of clear space around them. Changes are saved automatically.</p>
   <button id="setClose">✕ Close</button>
 </div></div>
@@ -191,8 +195,9 @@ function saveBests() { try { localStorage.setItem('cubeDashBests', JSON.stringif
 let device = ''; try { device = localStorage.getItem('cubeDashDevice') || ''; } catch (e) {}
 let noclip = false, tainted = false;   // tainted = bot/noclip was used at any point this run
 
-// settings: which modes / orbs / pads / portals / hazards can appear
-let settings = { modes: {}, orbs: {}, pads: {}, speed: true, mini: true, big: true, grav: true, dual: true, spikes: true, blocks: true };
+// settings: which modes / orbs / pads / portals / hazards can appear, plus mini/big limits
+let settings = { modes: {}, orbs: {}, pads: {}, speed: true, mini: true, big: true, grav: true, dual: true, spikes: true, blocks: true,
+  maxGrav: 3, minGrav: 0.4, maxWave: 3, minWave: 0.4, miniSize: 0.32, bigSize: 2.2 };
 MODES.forEach(m => settings.modes[m] = true);
 ORB_KINDS.forEach(k => settings.orbs[k] = true);
 PAD_KINDS.forEach(k => settings.pads[k] = true);
@@ -203,6 +208,7 @@ try {
     if (s.orbs) ORB_KINDS.forEach(k => { if (typeof s.orbs[k] === 'boolean') settings.orbs[k] = s.orbs[k]; });
     if (s.pads) PAD_KINDS.forEach(k => { if (typeof s.pads[k] === 'boolean') settings.pads[k] = s.pads[k]; });
     for (const k of ['speed', 'mini', 'big', 'grav', 'dual', 'spikes', 'blocks']) if (typeof s[k] === 'boolean') settings[k] = s[k];
+    for (const k of ['maxGrav', 'minGrav', 'maxWave', 'minWave', 'miniSize', 'bigSize']) if (typeof s[k] === 'number') settings[k] = s[k];
   }
 } catch (e) {}
 function saveSettings() { try { localStorage.setItem('cubeDashSettings', JSON.stringify(settings)); } catch (e) {} }
@@ -229,7 +235,7 @@ const GRAVITY = 0.9, JUMP = -15;
 const ROBOT_JUMP = -12.5, ROBOT_HOLD = 16;
 const WAVE_SPEED = 6;
 const SHIP_THRUST = 1.0, SHIP_GRAV = 0.55, SHIP_MAX = 9;
-const MINI_SHIP_THRUST = 0.7;
+const MINI_SHIP_THRUST = 0.7, BIG_SHIP_THRUST = 1.2;
 const BALL_GRAV = 0.95, BALL_MAX = 12;
 const SWING_GRAV = 0.7, SWING_MAX = 11;
 const UFO_FLAP = -8.2, UFO_GRAV = 0.5, UFO_MAX = 10;
@@ -240,7 +246,7 @@ const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 // a player rides gravityDir +1 (floor) or -1 (ceiling, the dual mirror)
 function makePlayer(gravityDir) {
   return { x: 150, y: gravityDir > 0 ? GROUND - BASE_SIZE : CEIL, size: BASE_SIZE, vy: 0, onGround: true, rot: 0,
-    mode: 'cube', gravityDir, holdTime: 0, dashing: false, dashT: 0, dashY: 0, trail: [], gravMul: 1, waveMul: 1 };
+    mode: 'cube', gravityDir, holdTime: 0, dashing: false, dashT: 0, dashY: 0, trail: [], gravMul: 1, waveMul: 1, sizeLevel: 0 };
 }
 
 function reset() {
@@ -312,15 +318,25 @@ function setSize(p, ns) {
   if (p.gravityDir > 0) p.y += (p.size - ns);   // keep bottom edge
   p.size = ns;
 }
-// mini portals stack: the first one shrinks you & makes gravity 1.5x heavier;
-// each further mini shrinks you more & multiplies gravity by 1.2x. Every mini also
-// makes wave fly up/down 1.2x faster (capped at 5x).
-function applyMini(p) {
-  p.waveMul = Math.min(5, p.waveMul * 1.2);
-  if (p.gravMul <= 1.0001) { setSize(p, BASE_SIZE * 0.6); p.gravMul = 1.5; }
-  else { setSize(p, Math.max(BASE_SIZE * 0.32, p.size * 0.82)); p.gravMul = Math.min(3, p.gravMul * 1.2); }
+// One size scale: level 0 = normal, negative = mini (smaller, heavier gravity, faster wave),
+// positive = big (larger, higher jump / lighter gravity, slower wave). Mini & big portals
+// step this level in opposite directions, so e.g. 2x mini + 1x big nets one mini.
+function recompute(p) {
+  const L = p.sizeLevel;
+  if (L === 0) { setSize(p, BASE_SIZE); p.gravMul = 1; p.waveMul = 1; }
+  else if (L < 0) {   // mini: first -> 1.5x gravity & 0.6 size, each further x1.2 grav / x0.82 size
+    const n = -L;
+    setSize(p, Math.max(BASE_SIZE * settings.miniSize, BASE_SIZE * 0.6 * Math.pow(0.82, n - 1)));
+    p.gravMul = Math.min(settings.maxGrav, 1.5 * Math.pow(1.2, n - 1));
+    p.waveMul = Math.min(settings.maxWave, Math.pow(1.2, n));
+  } else {            // big: first -> jump 1.5x (lighter gravity) & 1.4 size, each further x1.2 jump
+    const n = L;
+    setSize(p, Math.min(BASE_SIZE * settings.bigSize, BASE_SIZE * 1.4 * Math.pow(1.18, n - 1)));
+    p.gravMul = Math.max(settings.minGrav, 1 / (1.5 * Math.pow(1.2, n - 1)));
+    p.waveMul = Math.max(settings.minWave, 1 / Math.pow(1.2, n));
+  }
 }
-function resetSize(p) { setSize(p, BASE_SIZE); p.gravMul = 1; p.waveMul = 1; }
+function sizeStep(p, d) { p.sizeLevel = clamp(p.sizeLevel + d, -8, 8); recompute(p); }
 
 // next enabled mode after idx (skips modes turned off in Settings); returns idx if none other
 function nextMode(idx) {
@@ -350,7 +366,7 @@ function switchMode(to) {
 function toggleDual() {
   if (!dual) {
     dual = true;
-    const p2 = makePlayer(-1); p2.mode = player.mode; p2.x = player.x; p2.size = player.size; p2.gravMul = player.gravMul; p2.waveMul = player.waveMul; placeForMode(p2, player.mode);
+    const p2 = makePlayer(-1); p2.mode = player.mode; p2.x = player.x; p2.sizeLevel = player.sizeLevel; recompute(p2); placeForMode(p2, player.mode);
     players = [player, p2];
     burst(p2.x + p2.size / 2, p2.y + p2.size / 2, (hue + 90) % 360, 26);
   } else {
@@ -366,7 +382,7 @@ function spawn() {
     if (ni !== modeIndex) obstacles.push({ type: 'portal', x: W + 40, w: 34, h: GROUND - CEIL, to: MODES[ni], toIdx: ni });
     lastModeSwitch = score; spawnTimer = nextSpacing(); return;
   }
-  const mini = player.gravMul > 1.0001;   // once mini, never spawn double spikes
+  const mini = player.sizeLevel < 0, big = player.sizeLevel > 0;   // mini: no doubles; big: roof stays clear
   if (GROUND_MODES.has(player.mode)) {
     const sp = settings.spikes, bl = settings.blocks, r = Math.random();
     const block = () => { const bh = 40 + Math.floor(Math.random() * 2) * 40; obstacles.push({ type: 'block', x: W + 40, w: 50, h: bh, ceil: false }); };
@@ -374,8 +390,8 @@ function spawn() {
     else if (bl && r < diff.dbl + 0.13) block();
     else if (sp) obstacles.push({ type: 'spike', x: W + 40, w: 40, h: 40, ceil: false });
     else if (bl) block();   // spikes off but blocks on: still give the ground something
-    // roof parkour: hanging spikes from the ceiling (the dual mirror & inverted players dodge these)
-    if (sp && Math.random() < diff.ceil) {
+    // roof parkour: hanging spikes from the ceiling — skipped while big so high jumps have clear headroom
+    if (sp && !big && Math.random() < diff.ceil) {
       const cx = W + 40 + (Math.random() < 0.5 ? 90 : 0);
       if (mini || Math.random() < 0.7) obstacles.push({ type: 'spike', x: cx, w: 40, h: 40, ceil: true });
       else { obstacles.push({ type: 'spike', x: cx, w: 40, h: 40, ceil: true }); obstacles.push({ type: 'spike', x: cx + 44, w: 40, h: 40, ceil: true }); }
@@ -450,11 +466,10 @@ function clearSpikesNear(x, r) {
 // gravity / size / dual portals appear now and then (respecting the Settings toggles)
 function spawnGimmick() {
   const m = player.mode, gdMode = (m === 'cube' || m === 'robot' || m === 'ball' || m === 'ufo');
-  const normalSize = player.size > BASE_SIZE * 0.8 && player.gravMul <= 1.0001;
   const opts = [];
   if (settings.grav && gdMode) opts.push('grav');
-  if (settings.mini) opts.push('mini');                 // can shrink (and stack) any time
-  if (settings.big && !normalSize) opts.push('big');    // restore only when shrunk
+  if (settings.mini) opts.push('mini');   // mini & big both stack and cancel each other
+  if (settings.big) opts.push('big');
   if (settings.dual) opts.push('dual');
   if (!opts.length) return;
   const pick = opts[Math.floor(Math.random() * opts.length)];
@@ -596,7 +611,7 @@ function updatePlayer(p, hold) {
     p.y += p.vy; if (!p.onGround) p.rot += 0.15 * gd; groundLand(p);
     if (p.onGround && hold) jumpNow(p);
   } else if (m === 'ship') {
-    const thrust = gm > 1.0001 ? MINI_SHIP_THRUST : SHIP_THRUST;
+    const thrust = gm > 1.0001 ? MINI_SHIP_THRUST : gm < 0.999 ? BIG_SHIP_THRUST : SHIP_THRUST;
     p.vy += (hold ? -thrust : SHIP_GRAV * gm) * gd; p.vy = clamp(p.vy, -SHIP_MAX, SHIP_MAX); p.y += p.vy; clampSurface(p, s); p.rot = p.vy * 0.05 * gd;
   } else if (m === 'wave') {
     p.vy = (hold ? -WAVE_SPEED : WAVE_SPEED) * gd * p.waveMul; p.y += p.vy; p.rot = (hold ? -1 : 1) * gd * Math.PI / 4;
@@ -642,7 +657,7 @@ function update() {
     } else if (o.type === 'grav') {
       if (!o.used && players.some(p => aabb(p.x, p.y, p.size, p.size, o.x, CEIL, o.w, fullH))) { o.used = true; for (const p of players) { p.gravityDir *= -1; p.onGround = false; } burst(player.x + player.size / 2, player.y + player.size / 2, 210, 18); }
     } else if (o.type === 'size') {
-      if (!o.used && players.some(p => aabb(p.x, p.y, p.size, p.size, o.x, CEIL, o.w, fullH))) { o.used = true; for (const p of players) o.kind === 'mini' ? applyMini(p) : resetSize(p); burst(player.x + player.size / 2, player.y + player.size / 2, o.kind === 'mini' ? 150 : 285, 18); }
+      if (!o.used && players.some(p => aabb(p.x, p.y, p.size, p.size, o.x, CEIL, o.w, fullH))) { o.used = true; for (const p of players) sizeStep(p, o.kind === 'mini' ? -1 : 1); burst(player.x + player.size / 2, player.y + player.size / 2, o.kind === 'mini' ? 150 : 285, 18); }
     } else if (o.type === 'speed') {
       if (!o.used && o.x <= player.x + player.size) { o.used = true; speedMult = o.mult; burst(player.x, player.y + player.size / 2, speedHue(o.mult), 16); }
     } else if (o.type === 'pad') {
@@ -903,6 +918,16 @@ function checkboxGroup(containerId, items, getVal, setVal) {
     box.appendChild(lab);
   });
 }
+function numberGroup(containerId, items) {
+  const box = document.getElementById(containerId); box.innerHTML = '';
+  items.forEach(({ key, label, step, min, max }) => {
+    const lab = document.createElement('label');
+    const inp = document.createElement('input'); inp.type = 'number'; inp.step = step; inp.min = min; inp.max = max; inp.value = settings[key];
+    inp.addEventListener('change', () => { let v = parseFloat(inp.value); if (isNaN(v)) v = settings[key]; v = Math.max(min, Math.min(max, v)); settings[key] = v; inp.value = v; saveSettings(); });
+    lab.appendChild(document.createTextNode(label)); lab.appendChild(inp);
+    box.appendChild(lab);
+  });
+}
 function buildSettings() {
   const box = document.getElementById('setModes'); box.innerHTML = '';
   MODES.forEach(m => {
@@ -925,6 +950,14 @@ function buildSettings() {
   checkboxGroup('setHazards', [
     { key: 'spikes', label: 'Spikes' }, { key: 'blocks', label: 'Blocks' },
   ], k => settings[k], (k, v) => settings[k] = v);
+  numberGroup('setLimits', [
+    { key: 'maxGrav', label: 'Max gravity cap', step: 0.1, min: 1, max: 8 },
+    { key: 'minGrav', label: 'Min gravity cap', step: 0.05, min: 0.1, max: 1 },
+    { key: 'maxWave', label: 'Max wave speed', step: 0.1, min: 1, max: 8 },
+    { key: 'minWave', label: 'Min wave speed', step: 0.05, min: 0.1, max: 1 },
+    { key: 'miniSize', label: 'Max mini (smallest ×)', step: 0.02, min: 0.1, max: 1 },
+    { key: 'bigSize', label: 'Max big size (×)', step: 0.1, min: 1, max: 5 },
+  ]);
 }
 function openSettings() { settingsOpen = true; buildSettings(); settingsEl.style.display = 'flex'; }
 function closeSettings() { settingsOpen = false; settingsEl.style.display = 'none'; cv.focus(); }
