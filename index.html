@@ -228,7 +228,8 @@ let holding = false, effHold = false, infoOpen = false, settingsOpen = false, sh
 const GRAVITY = 0.9, JUMP = -15;
 const ROBOT_JUMP = -12.5, ROBOT_HOLD = 16;
 const WAVE_SPEED = 6;
-const SHIP_THRUST = 0.7, SHIP_GRAV = 0.55, SHIP_MAX = 9;
+const SHIP_THRUST = 1.0, SHIP_GRAV = 0.55, SHIP_MAX = 9;
+const MINI_SHIP_THRUST = 0.7;
 const BALL_GRAV = 0.95, BALL_MAX = 12;
 const SWING_GRAV = 0.7, SWING_MAX = 11;
 const UFO_FLAP = -8.2, UFO_GRAV = 0.5, UFO_MAX = 10;
@@ -239,7 +240,7 @@ const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 // a player rides gravityDir +1 (floor) or -1 (ceiling, the dual mirror)
 function makePlayer(gravityDir) {
   return { x: 150, y: gravityDir > 0 ? GROUND - BASE_SIZE : CEIL, size: BASE_SIZE, vy: 0, onGround: true, rot: 0,
-    mode: 'cube', gravityDir, holdTime: 0, dashing: false, dashT: 0, dashY: 0, trail: [] };
+    mode: 'cube', gravityDir, holdTime: 0, dashing: false, dashT: 0, dashY: 0, trail: [], gravMul: 1 };
 }
 
 function reset() {
@@ -311,6 +312,13 @@ function setSize(p, ns) {
   if (p.gravityDir > 0) p.y += (p.size - ns);   // keep bottom edge
   p.size = ns;
 }
+// mini portals stack: the first one shrinks you & makes gravity 1.5x heavier,
+// each further mini shrinks you more & multiplies gravity by another 1.2x
+function applyMini(p) {
+  if (p.gravMul <= 1.0001) { setSize(p, BASE_SIZE * 0.6); p.gravMul = 1.5; }
+  else { setSize(p, Math.max(BASE_SIZE * 0.32, p.size * 0.82)); p.gravMul = Math.min(3, p.gravMul * 1.2); }
+}
+function resetSize(p) { setSize(p, BASE_SIZE); p.gravMul = 1; }
 
 // next enabled mode after idx (skips modes turned off in Settings); returns idx if none other
 function nextMode(idx) {
@@ -320,7 +328,7 @@ function nextMode(idx) {
 
 // place a player for a freshly-entered mode, on its surface (floor for +gd, ceiling for -gd)
 function placeForMode(p, to) {
-  p.vy = 0; p.holdTime = 0; p.dashing = false; p.size = BASE_SIZE; p.trail = [];
+  p.vy = 0; p.holdTime = 0; p.dashing = false; p.size = BASE_SIZE; p.gravMul = 1; p.trail = [];
   if (GROUND_MODES.has(to)) { p.onGround = false; p.rot = 0; p.y = p.gravityDir > 0 ? GROUND - p.size : CEIL; }
   else if (to === 'spider' || to === 'ball') { p.onGround = true; p.y = p.gravityDir > 0 ? GROUND - p.size : CEIL; }
   else p.y = (CEIL + GROUND) / 2 - p.size / 2 - p.gravityDir * 60;   // air modes start offset by lane
@@ -438,10 +446,10 @@ function clearSpikesNear(x, r) {
 // gravity / size / dual portals appear now and then (respecting the Settings toggles)
 function spawnGimmick() {
   const m = player.mode, gdMode = (m === 'cube' || m === 'robot' || m === 'ball' || m === 'ufo');
-  const normalSize = player.size > BASE_SIZE * 0.8;
+  const normalSize = player.size > BASE_SIZE * 0.8 && player.gravMul <= 1.0001;
   const opts = [];
   if (settings.grav && gdMode) opts.push('grav');
-  if (settings.mini && normalSize) opts.push('mini');   // shrink only when at normal size
+  if (settings.mini) opts.push('mini');                 // can shrink (and stack) any time
   if (settings.big && !normalSize) opts.push('big');    // restore only when shrunk
   if (settings.dual) opts.push('dual');
   if (!opts.length) return;
@@ -454,7 +462,7 @@ function spawnGimmick() {
   } else if (pick === 'dual') {
     obstacles.push({ type: 'dual', x: W + 40, w: 30, used: false });
   } else {
-    obstacles.push({ type: 'size', x: W + 40, w: 30, scale: pick === 'mini' ? 0.6 : 1.0, used: false });
+    obstacles.push({ type: 'size', x: W + 40, w: 30, kind: pick, used: false });
   }
 }
 
@@ -525,7 +533,7 @@ function autoPilot() {
   const m = player.mode, gd = player.gravityDir, s = player.size;
   if (GROUND_MODES.has(m)) {
     if (!player.onGround) return null;
-    const arc = (2 * Math.abs(JUMP) / GRAVITY) * speed;   // horizontal jump distance at this speed
+    const arc = (2 * Math.abs(JUMP) / (GRAVITY * player.gravMul)) * speed;   // horizontal jump distance (heavier when mini)
     const isThreat = o => gd > 0 ? ((o.type === 'spike' && !o.ceil) || o.type === 'block') : (o.type === 'spike' && o.ceil);
     let nearD = Infinity;
     for (const o of obstacles) { if (!isThreat(o)) continue; const d = o.x - (player.x + s); if (d > 0 && d < nearD) nearD = d; }
@@ -563,7 +571,7 @@ function clampSurface(p, s) {
   if (p.y < CEIL) { p.y = CEIL; p.vy = 0; }
 }
 function updatePlayer(p, hold) {
-  const s = p.size, m = p.mode, gd = p.gravityDir;
+  const s = p.size, m = p.mode, gd = p.gravityDir, gm = p.gravMul;
   if (p.dashing) {
     if (hold && p.dashT > 0 && m !== 'spider') {
       p.dashT--; p.vy = 0; p.y += (p.dashY - (p.y + s / 2)) * 0.35;
@@ -574,31 +582,32 @@ function updatePlayer(p, hold) {
     p.dashing = false; p.vy = 0;
   }
   if (m === 'cube') {
-    p.vy += GRAVITY * gd; p.y += p.vy; if (!p.onGround) p.rot += 0.18 * gd; groundLand(p);
+    p.vy += GRAVITY * gd * gm; p.y += p.vy; if (!p.onGround) p.rot += 0.18 * gd; groundLand(p);
     if (p.onGround && hold) jumpNow(p);
   } else if (m === 'robot') {
-    if (hold && p.vy * gd < 0 && p.holdTime < ROBOT_HOLD) { p.vy += GRAVITY * 0.45 * gd; p.holdTime++; }
-    else p.vy += GRAVITY * gd;
+    if (hold && p.vy * gd < 0 && p.holdTime < ROBOT_HOLD) { p.vy += GRAVITY * 0.45 * gd * gm; p.holdTime++; }
+    else p.vy += GRAVITY * gd * gm;
     p.y += p.vy; if (!p.onGround) p.rot += 0.15 * gd; groundLand(p);
     if (p.onGround && hold) jumpNow(p);
   } else if (m === 'ship') {
-    p.vy += (hold ? -SHIP_THRUST : SHIP_GRAV) * gd; p.vy = clamp(p.vy, -SHIP_MAX, SHIP_MAX); p.y += p.vy; clampSurface(p, s); p.rot = p.vy * 0.05 * gd;
+    const thrust = gm > 1.0001 ? MINI_SHIP_THRUST : SHIP_THRUST;
+    p.vy += (hold ? -thrust : SHIP_GRAV * gm) * gd; p.vy = clamp(p.vy, -SHIP_MAX, SHIP_MAX); p.y += p.vy; clampSurface(p, s); p.rot = p.vy * 0.05 * gd;
   } else if (m === 'wave') {
     p.vy = (hold ? -WAVE_SPEED : WAVE_SPEED) * gd; p.y += p.vy; p.rot = (hold ? -1 : 1) * gd * Math.PI / 4;
     if (p.y + s > GROUND) p.y = GROUND - s; if (p.y < CEIL) p.y = CEIL;
     p.trail.push({ x: p.x + s / 2, y: p.y + s / 2, life: 1, h: hue }); if (p.trail.length > 260) p.trail.shift();
   } else if (m === 'ball') {
-    p.vy += BALL_GRAV * gd; p.vy = clamp(p.vy, -BALL_MAX, BALL_MAX); p.y += p.vy;
+    p.vy += BALL_GRAV * gd * gm; p.vy = clamp(p.vy, -BALL_MAX, BALL_MAX); p.y += p.vy;
     if (p.y + s >= GROUND) { p.y = GROUND - s; if (gd > 0) { p.vy = 0; p.onGround = true; } }
     else if (p.y <= CEIL) { p.y = CEIL; if (gd < 0) { p.vy = 0; p.onGround = true; } }
     else p.onGround = false;
     p.rot += 0.2 * gd;
   } else if (m === 'ufo') {
-    p.vy += UFO_GRAV * gd; p.vy = clamp(p.vy, -UFO_MAX, UFO_MAX); p.y += p.vy; clampSurface(p, s); p.rot = p.vy * 0.04 * gd;
+    p.vy += UFO_GRAV * gd * gm; p.vy = clamp(p.vy, -UFO_MAX, UFO_MAX); p.y += p.vy; clampSurface(p, s); p.rot = p.vy * 0.04 * gd;
   } else if (m === 'spider') {
     p.y = gd > 0 ? GROUND - s : CEIL;
   } else if (m === 'swing') {
-    p.vy += SWING_GRAV * (hold ? -1 : 1) * gd; p.vy = clamp(p.vy, -SWING_MAX, SWING_MAX); p.y += p.vy; clampSurface(p, s); p.rot = p.vy * 0.05 * gd;
+    p.vy += SWING_GRAV * (hold ? -1 : 1) * gd * gm; p.vy = clamp(p.vy, -SWING_MAX, SWING_MAX); p.y += p.vy; clampSurface(p, s); p.rot = p.vy * 0.05 * gd;
   }
 }
 
@@ -627,7 +636,7 @@ function update() {
     } else if (o.type === 'grav') {
       if (!o.used && players.some(p => aabb(p.x, p.y, p.size, p.size, o.x, CEIL, o.w, fullH))) { o.used = true; for (const p of players) { p.gravityDir *= -1; p.onGround = false; } burst(player.x + player.size / 2, player.y + player.size / 2, 210, 18); }
     } else if (o.type === 'size') {
-      if (!o.used && players.some(p => aabb(p.x, p.y, p.size, p.size, o.x, CEIL, o.w, fullH))) { o.used = true; for (const p of players) setSize(p, BASE_SIZE * o.scale); burst(player.x + player.size / 2, player.y + player.size / 2, o.scale < 1 ? 150 : 285, 18); }
+      if (!o.used && players.some(p => aabb(p.x, p.y, p.size, p.size, o.x, CEIL, o.w, fullH))) { o.used = true; for (const p of players) o.kind === 'mini' ? applyMini(p) : resetSize(p); burst(player.x + player.size / 2, player.y + player.size / 2, o.kind === 'mini' ? 150 : 285, 18); }
     } else if (o.type === 'speed') {
       if (!o.used && o.x <= player.x + player.size) { o.used = true; speedMult = o.mult; burst(player.x, player.y + player.size / 2, speedHue(o.mult), 16); }
     } else if (o.type === 'pad') {
@@ -731,7 +740,7 @@ function draw() {
       ctx.beginPath(); ctx.moveTo(cx - 8, cy + 6); ctx.lineTo(cx, cy + 16); ctx.lineTo(cx + 8, cy + 6); ctx.stroke();
       ctx.fillStyle = '#cfe6ff'; ctx.font = 'bold 11px Segoe UI'; ctx.textAlign = 'center'; ctx.fillText('GRAVITY', cx, CEIL + 14);
     } else if (o.type === 'size') {
-      const cx = o.x + o.w / 2, cy = (GROUND + CEIL) / 2, mini = o.scale < 1, pc = mini ? 150 : 285;
+      const cx = o.x + o.w / 2, cy = (GROUND + CEIL) / 2, mini = o.kind === 'mini', pc = mini ? 150 : 285;
       ctx.strokeStyle = `hsl(${pc}, 85%, 62%)`; ctx.lineWidth = 5; ctx.globalAlpha = .9; ctx.beginPath(); ctx.ellipse(cx, cy, o.w / 2, (GROUND - CEIL) / 2, 0, 0, Math.PI * 2); ctx.stroke();
       ctx.globalAlpha = .14; ctx.fillStyle = `hsl(${pc}, 85%, 60%)`; ctx.beginPath(); ctx.ellipse(cx, cy, o.w / 2, (GROUND - CEIL) / 2, 0, 0, Math.PI * 2); ctx.fill();
       ctx.globalAlpha = 1; ctx.fillStyle = '#fff'; ctx.font = 'bold 12px Segoe UI'; ctx.textAlign = 'center'; ctx.fillText(mini ? 'MINI' : 'BIG', cx, CEIL + 14);
