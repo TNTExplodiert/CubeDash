@@ -80,6 +80,8 @@
     <li><b>Spider</b> — tap to teleport to the other surface.</li>
     <li><b>Swing</b> — hold flips gravity up, release flips it down.</li>
   </ul>
+  <h3>Dual</h3>
+  <p>A <b>dual portal</b> splits you into <b>two mirrored players</b> — one on the floor, one on the ceiling. They share your input (mirrored), and <b>both</b> must survive. Hit another dual portal to merge back.</p>
   <h3>Orbs (tap while touching)</h3>
   <ul>
     <li><span class="dot" style="background:hsl(50,100%,62%)"></span><b>Yellow</b> — normal jump</li>
@@ -93,7 +95,7 @@
   </ul>
   <h3>Portals</h3>
   <ul>
-    <li><b>Mode</b> — switch game mode.</li>
+    <li><b>Mode</b> — switch game mode · <b>Dual</b> — split / merge two players.</li>
     <li><span class="dot" style="background:hsl(210,95%,62%)"></span><b>Gravity</b> — flips gravity up/down.</li>
     <li><span class="dot" style="background:hsl(150,85%,55%)"></span><b>Mini</b> / <span class="dot" style="background:hsl(285,85%,62%)"></span><b>Big</b> — shrink or restore your size.</li>
     <li><b>Speed</b> — dashed neon gates (»») change scroll speed x0.8–x2.0.</li>
@@ -160,7 +162,7 @@ let diff = DIFFS[2];
 let best = 0; try { best = parseInt(localStorage.getItem('cubeDashBest')) || 0; } catch (e) {}
 
 // settings: which modes / orbs / pads / portals can appear
-let settings = { modes: {}, orbs: {}, pads: {}, speed: true, mini: true, big: true, grav: true };
+let settings = { modes: {}, orbs: {}, pads: {}, speed: true, mini: true, big: true, grav: true, dual: true };
 MODES.forEach(m => settings.modes[m] = true);
 ORB_KINDS.forEach(k => settings.orbs[k] = true);
 PAD_KINDS.forEach(k => settings.pads[k] = true);
@@ -170,12 +172,12 @@ try {
     if (s.modes) MODES.forEach(m => { if (typeof s.modes[m] === 'boolean') settings.modes[m] = s.modes[m]; });
     if (s.orbs) ORB_KINDS.forEach(k => { if (typeof s.orbs[k] === 'boolean') settings.orbs[k] = s.orbs[k]; });
     if (s.pads) PAD_KINDS.forEach(k => { if (typeof s.pads[k] === 'boolean') settings.pads[k] = s.pads[k]; });
-    for (const k of ['speed', 'mini', 'big', 'grav']) if (typeof s[k] === 'boolean') settings[k] = s[k];
+    for (const k of ['speed', 'mini', 'big', 'grav', 'dual']) if (typeof s[k] === 'boolean') settings[k] = s[k];
   }
 } catch (e) {}
 function saveSettings() { try { localStorage.setItem('cubeDashSettings', JSON.stringify(settings)); } catch (e) {} }
 
-let player, obstacles, orbs, particles, trail, baseSpeed, speedMult, speed, score, state, spawnTimer, orbTimer, speedTimer, padTimer, gimmickTimer, hue, modeIndex, lastModeSwitch, grace, lastGapTop, lastSpacing;
+let player, players, dual, obstacles, orbs, particles, baseSpeed, speedMult, speed, score, state, spawnTimer, orbTimer, speedTimer, padTimer, gimmickTimer, hue, modeIndex, lastModeSwitch, grace, lastGapTop, lastSpacing;
 let holding = false, effHold = false, infoOpen = false, settingsOpen = false, showHitboxes = false, botMode = false;
 
 const GRAVITY = 0.9, JUMP = -15;
@@ -187,9 +189,17 @@ const SWING_GRAV = 0.7, SWING_MAX = 11;
 const UFO_FLAP = -8.2, UFO_GRAV = 0.5, UFO_MAX = 10;
 const DASH_T = 60, BASE_SIZE = 40;
 
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+
+// a player rides gravityDir +1 (floor) or -1 (ceiling, the dual mirror)
+function makePlayer(gravityDir) {
+  return { x: 150, y: gravityDir > 0 ? GROUND - BASE_SIZE : CEIL, size: BASE_SIZE, vy: 0, onGround: true, rot: 0,
+    mode: 'cube', gravityDir, holdTime: 0, dashing: false, dashT: 0, dashY: 0, trail: [] };
+}
+
 function reset() {
-  player = { x: 150, y: GROUND - BASE_SIZE, size: BASE_SIZE, vy: 0, onGround: true, rot: 0, mode: 'cube', gravityDir: 1, holdTime: 0, dashing: false, dashT: 0, dashY: 0 };
-  obstacles = []; orbs = []; particles = []; trail = [];
+  player = makePlayer(1); players = [player]; dual = false;
+  obstacles = []; orbs = []; particles = [];
   baseSpeed = diff.speed; speedMult = 1.0; speed = baseSpeed;
   score = 0; hue = 200; spawnTimer = 220; orbTimer = 90; speedTimer = 1200; padTimer = 180; gimmickTimer = 540;
   modeIndex = 0; lastModeSwitch = 0; grace = 0; lastGapTop = (CEIL + GROUND) / 2; lastSpacing = 260;
@@ -201,58 +211,60 @@ function burst(x, y, h, n = 8) {
   for (let i = 0; i < n; i++) particles.push({ x, y, vx: (Math.random() - 0.5) * 6, vy: (Math.random() - 1.2) * 5, life: 1, h });
 }
 
-function jumpNow() {
-  const m = player.mode, gd = player.gravityDir;
-  player.vy = (m === 'robot' ? ROBOT_JUMP : JUMP) * gd;
-  player.onGround = false; player.holdTime = 0;
-  burst(player.x, player.y + (gd > 0 ? player.size : 0), hue);
+function jumpNow(p) {
+  const gd = p.gravityDir;
+  p.vy = (p.mode === 'robot' ? ROBOT_JUMP : JUMP) * gd;
+  p.onGround = false; p.holdTime = 0;
+  burst(p.x, p.y + (gd > 0 ? p.size : 0), hue);
 }
 
 function press() {
   if (infoOpen || settingsOpen || state === 'menu') return;
   if (state === 'dead') { reset(); return; }
   holding = true;
-  if (tryActivateOrb()) return;
-  const m = player.mode;
-  if (m === 'cube' || m === 'robot') { if (player.onGround) jumpNow(); }
-  else if (m === 'ball') { player.gravityDir *= -1; player.onGround = false; burst(player.x + 20, player.y + 20, (hue + 120) % 360); }
-  else if (m === 'spider') { player.gravityDir *= -1; spiderTeleport(); }
-  else if (m === 'ufo') { player.vy = UFO_FLAP * player.gravityDir; player.onGround = false; burst(player.x, player.y + player.size, (hue + 40) % 360, 6); }
+  for (const p of players) {
+    if (tryActivateOrb(p)) continue;
+    const m = p.mode;
+    if (m === 'cube' || m === 'robot') { if (p.onGround) jumpNow(p); }
+    else if (m === 'ball') { p.gravityDir *= -1; p.onGround = false; burst(p.x + 20, p.y + 20, (hue + 120) % 360); }
+    else if (m === 'spider') { p.gravityDir *= -1; spiderTeleport(p); }
+    else if (m === 'ufo') { p.vy = UFO_FLAP * p.gravityDir; p.onGround = false; burst(p.x, p.y + p.size, (hue + 40) % 360, 6); }
+  }
 }
 function release() { holding = false; }
 
-function tryActivateOrb() {
-  const cx = player.x + player.size / 2, cy = player.y + player.size / 2, reach = (player.size * 0.55) ** 2;
-  for (const o of orbs) { if (o.used) continue; const dx = cx - o.x, dy = cy - o.y; if (dx * dx + dy * dy < (o.r + 6) ** 2 + reach) { activateOrb(o); return true; } }
+function tryActivateOrb(p) {
+  const cx = p.x + p.size / 2, cy = p.y + p.size / 2, reach = (p.size * 0.55) ** 2;
+  for (const o of orbs) { if (o.used) continue; const dx = cx - o.x, dy = cy - o.y; if (dx * dx + dy * dy < (o.r + 6) ** 2 + reach) { activateOrb(p, o); return true; } }
   return false;
 }
 
-function activateOrb(o) {
-  o.used = true; const gd = player.gravityDir; const [h] = ORB_COL[o.kind]; burst(o.x, o.y, h, 20);
+function activateOrb(p, o) {
+  o.used = true; const gd = p.gravityDir; const [h] = ORB_COL[o.kind]; burst(o.x, o.y, h, 20);
   switch (o.kind) {
-    case 'yellow':  player.vy = -15 * gd; break;
-    case 'pink':    player.vy = -10 * gd; break;
-    case 'red':     player.vy = -21 * gd; break;
-    case 'black':   player.vy = 16 * gd; break;
-    case 'green':   player.gravityDir *= -1; player.vy = -15 * player.gravityDir; break;
-    case 'gravity': player.gravityDir *= -1; player.vy = -3 * player.gravityDir; break;   // blue: reverse gravity
-    case 'spider':  player.gravityDir *= -1; spiderTeleport(); break;
-    case 'dash':    player.dashing = true; player.dashY = o.y; player.dashT = DASH_T; break;
+    case 'yellow':  p.vy = -15 * gd; break;
+    case 'pink':    p.vy = -10 * gd; break;
+    case 'red':     p.vy = -21 * gd; break;
+    case 'black':   p.vy = 16 * gd; break;
+    case 'green':   p.gravityDir *= -1; p.vy = -15 * p.gravityDir; break;
+    case 'gravity': p.gravityDir *= -1; p.vy = -3 * p.gravityDir; break;   // blue: reverse gravity
+    case 'spider':  p.gravityDir *= -1; spiderTeleport(p); break;
+    case 'dash':    p.dashing = true; p.dashY = o.y; p.dashT = DASH_T; break;
   }
-  player.onGround = false;
+  p.onGround = false;
 }
 
-function spiderTeleport() {
-  const toY = player.gravityDir > 0 ? GROUND - player.size : CEIL;
-  for (let i = 0; i <= 14; i++) burst(player.x + player.size / 2, player.y + player.size / 2 + (toY - player.y) * (i / 14), (hue + 60) % 360, 1);
-  player.y = toY; player.vy = 0;
+function spiderTeleport(p) {
+  const toY = p.gravityDir > 0 ? GROUND - p.size : CEIL;
+  for (let i = 0; i <= 14; i++) burst(p.x + p.size / 2, p.y + p.size / 2 + (toY - p.y) * (i / 14), (hue + 60) % 360, 1);
+  p.y = toY; p.vy = 0;
 }
 
 // shrink/grow keeping the surface contact point
-function setSize(ns) {
-  if (ns === player.size) return;
-  if (player.gravityDir > 0) player.y += (player.size - ns);   // keep bottom edge
-  player.size = ns;
+function setSize(p, ns) {
+  if (ns === p.size) return;
+  if (p.gravityDir > 0) p.y += (p.size - ns);   // keep bottom edge
+  p.size = ns;
 }
 
 // next enabled mode after idx (skips modes turned off in Settings); returns idx if none other
@@ -261,17 +273,34 @@ function nextMode(idx) {
   return idx;
 }
 
+// place a player for a freshly-entered mode, on its surface (floor for +gd, ceiling for -gd)
+function placeForMode(p, to) {
+  p.vy = 0; p.holdTime = 0; p.dashing = false; p.size = BASE_SIZE; p.trail = [];
+  if (GROUND_MODES.has(to)) { p.onGround = false; p.rot = 0; p.y = p.gravityDir > 0 ? GROUND - p.size : CEIL; }
+  else if (to === 'spider' || to === 'ball') { p.onGround = true; p.y = p.gravityDir > 0 ? GROUND - p.size : CEIL; }
+  else p.y = (CEIL + GROUND) / 2 - p.size / 2 - p.gravityDir * 60;   // air modes start offset by lane
+}
+
 function switchMode(to) {
-  trail = [];
-  player.mode = to; player.vy = 0; player.gravityDir = 1; player.holdTime = 0; player.dashing = false; player.size = BASE_SIZE;
+  for (let i = 0; i < players.length; i++) { const p = players[i]; p.mode = to; p.gravityDir = i === 0 ? 1 : -1; placeForMode(p, to); }
   if (to === 'wave' || to === 'ship' || to === 'spider') speedMult = 1.0;   // no speed changes in these modes
-  if (GROUND_MODES.has(to)) { player.onGround = false; player.rot = 0; player.y = GROUND - player.size; }
-  else if (to === 'spider' || to === 'ball') player.y = GROUND - player.size;
-  else player.y = (CEIL + GROUND) / 2 - player.size / 2;   // air modes (ship/wave/ufo/swing) start centred
   // clear the track ahead so leftover obstacles from the previous mode can't cause an unfair death
-  obstacles = obstacles.filter(o => o.type === 'portal' || o.x + (o.w || 42) < player.x);
+  obstacles = obstacles.filter(o => o.type === 'portal' || o.type === 'dual' || o.x + (o.w || 42) < player.x);
   spawnTimer = Math.max(spawnTimer, 300); orbTimer = Math.max(orbTimer, 140); grace = 40; lastGapTop = (CEIL + GROUND) / 2;
   burst(player.x + 20, player.y + 20, (hue + 180) % 360, 26);
+}
+
+// split into two mirrored players, or merge back to one
+function toggleDual() {
+  if (!dual) {
+    dual = true;
+    const p2 = makePlayer(-1); p2.mode = player.mode; p2.x = player.x; placeForMode(p2, player.mode);
+    players = [player, p2];
+    burst(p2.x + p2.size / 2, p2.y + p2.size / 2, (hue + 90) % 360, 26);
+  } else {
+    dual = false; players = [player];
+    burst(player.x + player.size / 2, player.y + player.size / 2, (hue + 90) % 360, 26);
+  }
 }
 
 // ----- spawning -----------------------------------------------------------
@@ -286,7 +315,7 @@ function spawn() {
     if (r < diff.dbl) { obstacles.push({ type: 'spike', x: W + 40, w: 40, h: 40, ceil: false }); obstacles.push({ type: 'spike', x: W + 84, w: 40, h: 40, ceil: false }); }
     else if (r < diff.dbl + 0.13) { const bh = 40 + Math.floor(Math.random() * 2) * 40; obstacles.push({ type: 'block', x: W + 40, w: 50, h: bh, ceil: false }); }
     else obstacles.push({ type: 'spike', x: W + 40, w: 40, h: 40, ceil: false });
-    // roof parkour: hanging spikes from the ceiling (only threaten you when inverted)
+    // roof parkour: hanging spikes from the ceiling (the dual mirror & inverted players dodge these)
     if (Math.random() < diff.ceil) {
       const cx = W + 40 + (Math.random() < 0.5 ? 90 : 0);
       if (Math.random() < 0.7) obstacles.push({ type: 'spike', x: cx, w: 40, h: 40, ceil: true });
@@ -304,13 +333,18 @@ function spawn() {
     obstacles.push({ type: 'bar', x: W + 40, w: 42, y: floor ? CEIL : CEIL + gap, h: GROUND - CEIL - gap });
     lastGapTop = floor ? GROUND - gap : CEIL;
   } else {
-    const gap = player.mode === 'wave' ? Math.max(105, diff.gap - 35) : diff.gap;
-    const minTop = CEIL + 25, maxTop = Math.max(minTop, GROUND - gap - 70);
-    // keep the next gap within reach of the last one so flying modes stay possible
-    const vSpeed = player.mode === 'wave' ? WAVE_SPEED : player.mode === 'ship' ? 3.2 : player.mode === 'ufo' ? 6 : 5;
-    const reach = (lastSpacing / speed) * vSpeed * 0.6;
-    const top = Math.max(minTop, Math.min(maxTop, lastGapTop + (Math.random() * 2 - 1) * reach));
-    lastGapTop = top;
+    let gap = player.mode === 'wave' ? Math.max(105, diff.gap - 35) : diff.gap;
+    let top;
+    if (dual) {
+      // two mirrored fliers can only share a centred gap, so centre & widen it
+      gap = Math.min(GROUND - CEIL - 60, gap + 90); top = (CEIL + GROUND) / 2 - gap / 2; lastGapTop = top;
+    } else {
+      const minTop = CEIL + 25, maxTop = Math.max(minTop, GROUND - gap - 70);
+      // keep the next gap within reach of the last one so flying modes stay possible
+      const vSpeed = player.mode === 'wave' ? WAVE_SPEED : player.mode === 'ship' ? 3.2 : player.mode === 'ufo' ? 6 : 5;
+      const reach = (lastSpacing / speed) * vSpeed * 0.6;
+      top = Math.max(minTop, Math.min(maxTop, lastGapTop + (Math.random() * 2 - 1) * reach)); lastGapTop = top;
+    }
     obstacles.push({ type: 'bar', x: W + 40, w: 42, y: CEIL, h: top - CEIL });
     obstacles.push({ type: 'bar', x: W + 40, w: 42, y: top + gap, h: GROUND - (top + gap) });
   }
@@ -352,7 +386,7 @@ function clearSpikesNear(x, r) {
   obstacles = obstacles.filter(o => !((o.type === 'spike' || o.type === 'block') && Math.abs(o.x + (o.w || 40) / 2 - x) < r));
 }
 
-// gravity & size portals appear now and then (respecting the Settings toggles)
+// gravity / size / dual portals appear now and then (respecting the Settings toggles)
 function spawnGimmick() {
   const m = player.mode, gdMode = (m === 'cube' || m === 'robot' || m === 'ball' || m === 'ufo');
   const normalSize = player.size > BASE_SIZE * 0.8;
@@ -360,6 +394,7 @@ function spawnGimmick() {
   if (settings.grav && gdMode) opts.push('grav');
   if (settings.mini && normalSize) opts.push('mini');   // shrink only when at normal size
   if (settings.big && !normalSize) opts.push('big');    // restore only when shrunk
+  if (settings.dual) opts.push('dual');
   if (!opts.length) return;
   const pick = opts[Math.floor(Math.random() * opts.length)];
   if (pick === 'grav') {
@@ -367,6 +402,8 @@ function spawnGimmick() {
     clearSpikesNear(W + 40 + 15, R);
     spawnTimer = Math.max(spawnTimer, R + 30);   // keep the next hazard clear of it too
     obstacles.push({ type: 'grav', x: W + 40, w: 30, h: GROUND - CEIL, used: false });
+  } else if (pick === 'dual') {
+    obstacles.push({ type: 'dual', x: W + 40, w: 30, used: false });
   } else {
     obstacles.push({ type: 'size', x: W + 40, w: 30, scale: pick === 'mini' ? 0.6 : 1.0, used: false });
   }
@@ -379,32 +416,32 @@ function spawnPad() {
   if (!kinds.length) return;
   obstacles.push({ type: 'pad', kind: kinds[Math.floor(Math.random() * kinds.length)], x: W + 40, w: 48, used: false });
 }
-function activatePad(o) {
-  const gd = player.gravityDir;
-  if (o.kind === 'yellow') player.vy = -17 * gd;
-  else if (o.kind === 'pink') player.vy = -12 * gd;
-  else if (o.kind === 'red') player.vy = -24 * gd;
-  else if (o.kind === 'spider') { player.gravityDir *= -1; spiderTeleport(); }
-  else if (o.kind === 'gravity') { player.gravityDir *= -1; }
-  player.onGround = false;
+function activatePad(p, o) {
+  const gd = p.gravityDir;
+  if (o.kind === 'yellow') p.vy = -17 * gd;
+  else if (o.kind === 'pink') p.vy = -12 * gd;
+  else if (o.kind === 'red') p.vy = -24 * gd;
+  else if (o.kind === 'spider') { p.gravityDir *= -1; spiderTeleport(p); }
+  else if (o.kind === 'gravity') { p.gravityDir *= -1; }
+  p.onGround = false;
 }
 
 function aabb(ax, ay, aw, ah, bx, by, bw, bh) { return ax < bx + bw && ax + aw > bx && ay < by + bh && ay + ah > by; }
-function die() { if (state === 'dead' || grace > 0 || diff.inv) return; state = 'dead'; if (score > best) { best = score; try { localStorage.setItem('cubeDashBest', String(best)); } catch (e) {} } burst(player.x + player.size / 2, player.y + player.size / 2, hue, 40); }
+function die() { if (state === 'dead' || grace > 0 || diff.inv) return; state = 'dead'; if (score > best) { best = score; try { localStorage.setItem('cubeDashBest', String(best)); } catch (e) {} } for (const p of players) burst(p.x + p.size / 2, p.y + p.size / 2, hue, 40); }
 
-function groundLand() {
-  const s = player.size;
-  if (player.gravityDir > 0) {
+function groundLand(p) {
+  const s = p.size;
+  if (p.gravityDir > 0) {
     let floorY = GROUND;
     for (const o of obstacles) if (o.type === 'block' && !o.ceil) {
       const topY = GROUND - o.h;
-      if (player.x + s > o.x + 6 && player.x < o.x + o.w - 6 && player.vy >= 0 && player.y + s >= topY && player.y + s <= topY + speed + 14) floorY = Math.min(floorY, topY);
+      if (p.x + s > o.x + 6 && p.x < o.x + o.w - 6 && p.vy >= 0 && p.y + s >= topY && p.y + s <= topY + speed + 14) floorY = Math.min(floorY, topY);
     }
-    if (player.y + s >= floorY) { player.y = floorY - s; player.vy = 0; player.onGround = true; player.rot = Math.round(player.rot / (Math.PI / 2)) * (Math.PI / 2); }
-    else player.onGround = false;
+    if (p.y + s >= floorY) { p.y = floorY - s; p.vy = 0; p.onGround = true; p.rot = Math.round(p.rot / (Math.PI / 2)) * (Math.PI / 2); }
+    else p.onGround = false;
   } else {
-    if (player.y <= CEIL) { player.y = CEIL; player.vy = 0; player.onGround = true; player.rot = Math.round(player.rot / (Math.PI / 2)) * (Math.PI / 2); }
-    else player.onGround = false;
+    if (p.y <= CEIL) { p.y = CEIL; p.vy = 0; p.onGround = true; p.rot = Math.round(p.rot / (Math.PI / 2)) * (Math.PI / 2); }
+    else p.onGround = false;
   }
 }
 
@@ -421,21 +458,22 @@ function nextGapCenter() {
   return (gTop + gBot) / 2;
 }
 
-// activate jump & dash orbs we're within reach of (skip gravity-flip & slam orbs)
-function autoUseOrbs() {
-  const cx = player.x + player.size / 2, cy = player.y + player.size / 2, reach = (player.size * 0.55) ** 2;
+// activate jump & dash orbs a player is within reach of (skip gravity-flip & slam orbs)
+function autoUseOrbs(p) {
+  const cx = p.x + p.size / 2, cy = p.y + p.size / 2, reach = (p.size * 0.55) ** 2;
   for (const o of orbs) {
     if (o.used || (o.kind !== 'yellow' && o.kind !== 'pink' && o.kind !== 'red' && o.kind !== 'dash')) continue;
     const dx = cx - o.x, dy = cy - o.y;
-    if (dx * dx + dy * dy < (o.r + 6) ** 2 + reach) activateOrb(o);
+    if (dx * dx + dy * dy < (o.r + 6) ** 2 + reach) activateOrb(p, o);
   }
 }
 
-// returns a virtual "hold" for the flying modes, or null when nothing to steer this frame
+// drives every player from the primary's view (dual actions are applied mirrored to both).
+// returns a virtual "hold" for the flying modes, or null when nothing to hold this frame.
 function autoPilot() {
-  const s = player.size, m = player.mode, gd = player.gravityDir;
-  autoUseOrbs();
+  for (const p of players) autoUseOrbs(p);
   if (player.dashing) return true;   // keep riding a dash orb
+  const m = player.mode, gd = player.gravityDir, s = player.size;
   if (GROUND_MODES.has(m)) {
     if (!player.onGround) return null;
     const arc = (2 * Math.abs(JUMP) / GRAVITY) * speed;   // horizontal jump distance at this speed
@@ -443,17 +481,16 @@ function autoPilot() {
     let nearD = Infinity;
     for (const o of obstacles) { if (!isThreat(o)) continue; const d = o.x - (player.x + s); if (d > 0 && d < nearD) nearD = d; }
     if (nearD === Infinity) return null;
-    // widen to cover a bunched-up cluster (e.g. double spikes) so one jump clears all of it
     let farEdge = nearD;
     for (const o of obstacles) { if (!isThreat(o)) continue; const d = o.x - (player.x + s); if (d >= nearD - 1 && d <= nearD + 60) farEdge = Math.max(farEdge, d + (o.w || 40)); }
-    // jump so the arc's apex sits over the cluster centre — naturally earlier at high speed, later at low speed
-    if (nearD <= arc / 2 - (farEdge - nearD) / 2) jumpNow();
+    // jump so the arc's apex sits over the cluster centre — earlier at high speed, later at low speed
+    if (nearD <= arc / 2 - (farEdge - nearD) / 2) for (const p of players) if (p.onGround) jumpNow(p);
     return null;
   }
-  if (m === 'ball') {            // flip to the opposite surface before a spike on our current one
+  if (m === 'ball') {            // flip to the opposite surface before a spike on the primary's surface
     if (!player.onGround) return null;
     const onFloor = gd > 0, mine = o => o.type === 'spike' && (onFloor ? !o.ceil : o.ceil);
-    for (const o of obstacles) { if (!mine(o)) continue; const d = o.x - (player.x + s); if (d > 0 && d < speed * 26) { player.gravityDir *= -1; player.onGround = false; break; } }
+    for (const o of obstacles) { if (!mine(o)) continue; const d = o.x - (player.x + s); if (d > 0 && d < speed * 26) { for (const p of players) { p.gravityDir *= -1; p.onGround = false; } break; } }
     return null;
   }
   const c = nextGapCenter();
@@ -461,14 +498,59 @@ function autoPilot() {
   const cy = player.y + s / 2;
   if (m === 'spider') {          // ride the surface the gap touches
     const want = c > (CEIL + GROUND) / 2 ? 1 : -1;
-    if (gd !== want) { player.gravityDir = want; spiderTeleport(); }
+    if (gd !== want) for (const p of players) { p.gravityDir = want; spiderTeleport(p); }
     return null;
   }
   if (m === 'ufo') {             // flap when below the target and not already rising hard
-    if (cy > c + 6 && player.vy * gd > -3) { player.vy = UFO_FLAP * gd; player.onGround = false; }
+    if (cy > c + 6 && player.vy * gd > -3) for (const p of players) { p.vy = UFO_FLAP * p.gravityDir; p.onGround = false; }
     return null;
   }
   return cy > c;                 // ship / wave / swing: hold to rise toward the gap
+}
+
+// ----- per-player physics -------------------------------------------------
+function clampSurface(p, s) {
+  if (p.y + s > GROUND) { p.y = GROUND - s; p.vy = 0; }
+  if (p.y < CEIL) { p.y = CEIL; p.vy = 0; }
+}
+function updatePlayer(p, hold) {
+  const s = p.size, m = p.mode, gd = p.gravityDir;
+  if (p.dashing) {
+    if (hold && p.dashT > 0 && m !== 'spider') {
+      p.dashT--; p.vy = 0; p.y += (p.dashY - (p.y + s / 2)) * 0.35;
+      if (p.y < CEIL) p.y = CEIL; if (p.y + s > GROUND) p.y = GROUND - s;
+      p.rot += 0.25; if (Math.random() < 0.6) burst(p.x, p.y + s / 2, ORB_COL.dash[0], 1);
+      return;
+    }
+    p.dashing = false; p.vy = 0;
+  }
+  if (m === 'cube') {
+    p.vy += GRAVITY * gd; p.y += p.vy; if (!p.onGround) p.rot += 0.18 * gd; groundLand(p);
+    if (p.onGround && hold) jumpNow(p);
+  } else if (m === 'robot') {
+    if (hold && p.vy * gd < 0 && p.holdTime < ROBOT_HOLD) { p.vy += GRAVITY * 0.45 * gd; p.holdTime++; }
+    else p.vy += GRAVITY * gd;
+    p.y += p.vy; if (!p.onGround) p.rot += 0.15 * gd; groundLand(p);
+    if (p.onGround && hold) jumpNow(p);
+  } else if (m === 'ship') {
+    p.vy += (hold ? -SHIP_THRUST : SHIP_GRAV) * gd; p.vy = clamp(p.vy, -SHIP_MAX, SHIP_MAX); p.y += p.vy; clampSurface(p, s); p.rot = p.vy * 0.05 * gd;
+  } else if (m === 'wave') {
+    p.vy = (hold ? -WAVE_SPEED : WAVE_SPEED) * gd; p.y += p.vy; p.rot = (hold ? -1 : 1) * gd * Math.PI / 4;
+    if (p.y + s > GROUND) p.y = GROUND - s; if (p.y < CEIL) p.y = CEIL;
+    p.trail.push({ x: p.x + s / 2, y: p.y + s / 2, life: 1, h: hue }); if (p.trail.length > 260) p.trail.shift();
+  } else if (m === 'ball') {
+    p.vy += BALL_GRAV * gd; p.vy = clamp(p.vy, -BALL_MAX, BALL_MAX); p.y += p.vy;
+    if (p.y + s >= GROUND) { p.y = GROUND - s; if (gd > 0) { p.vy = 0; p.onGround = true; } }
+    else if (p.y <= CEIL) { p.y = CEIL; if (gd < 0) { p.vy = 0; p.onGround = true; } }
+    else p.onGround = false;
+    p.rot += 0.2 * gd;
+  } else if (m === 'ufo') {
+    p.vy += UFO_GRAV * gd; p.vy = clamp(p.vy, -UFO_MAX, UFO_MAX); p.y += p.vy; clampSurface(p, s); p.rot = p.vy * 0.04 * gd;
+  } else if (m === 'spider') {
+    p.y = gd > 0 ? GROUND - s : CEIL;
+  } else if (m === 'swing') {
+    p.vy += SWING_GRAV * (hold ? -1 : 1) * gd; p.vy = clamp(p.vy, -SWING_MAX, SWING_MAX); p.y += p.vy; clampSurface(p, s); p.rot = p.vy * 0.05 * gd;
+  }
 }
 
 // ----- update -------------------------------------------------------------
@@ -476,84 +558,28 @@ function update() {
   if (state !== 'play') return;
   score += 1; baseSpeed += diff.ramp; speed = baseSpeed * speedMult; hue = (hue + 0.4) % 360;
   if (grace > 0) grace--;
-  const s = player.size, m = player.mode;
-  // bot drives when toggled on (E); Auto difficulty defaults the bot on
   let hold = holding;
   if (botMode) { const ah = autoPilot(); if (ah !== null) hold = holding || ah; }
   effHold = hold;
-  const gd = player.gravityDir;
+  for (const p of players) updatePlayer(p, hold);
 
-  let dashed = false;
-  if (player.dashing) {
-    if (hold && player.dashT > 0 && m !== 'spider') {
-      player.dashT--; player.vy = 0;
-      player.y += (player.dashY - (player.y + s / 2)) * 0.35;
-      if (player.y < CEIL) player.y = CEIL; if (player.y + s > GROUND) player.y = GROUND - s;
-      player.rot += 0.25; dashed = true;
-      if (Math.random() < 0.6) burst(player.x, player.y + s / 2, ORB_COL.dash[0], 1);
-    } else { player.dashing = false; player.vy = 0; }
-  }
-
-  if (!dashed) {
-    if (m === 'cube') {
-      player.vy += GRAVITY * gd; player.y += player.vy;
-      if (!player.onGround) player.rot += 0.18 * gd;
-      groundLand();
-      if (player.onGround && hold) jumpNow();          // hold = keep jumping
-    } else if (m === 'robot') {
-      if (hold && player.vy * gd < 0 && player.holdTime < ROBOT_HOLD) { player.vy += GRAVITY * 0.45 * gd; player.holdTime++; }
-      else player.vy += GRAVITY * gd;
-      player.y += player.vy;
-      if (!player.onGround) player.rot += 0.15 * gd;
-      groundLand();
-      if (player.onGround && hold) jumpNow();           // hold = keep jumping
-    } else if (m === 'ship') {
-      player.vy += hold ? -SHIP_THRUST : SHIP_GRAV; player.vy = Math.max(-SHIP_MAX, Math.min(SHIP_MAX, player.vy)); player.y += player.vy;
-      if (player.y + s > GROUND) { player.y = GROUND - s; player.vy = 0; } if (player.y < CEIL) { player.y = CEIL; player.vy = 0; }
-      player.rot = player.vy * 0.05;
-    } else if (m === 'wave') {
-      player.vy = hold ? -WAVE_SPEED : WAVE_SPEED; player.y += player.vy; player.rot = hold ? -Math.PI / 4 : Math.PI / 4;
-      if (player.y + s > GROUND) player.y = GROUND - s; if (player.y < CEIL) player.y = CEIL;
-      trail.push({ x: player.x + s / 2, y: player.y + s / 2, life: 1, h: hue });
-      if (trail.length > 260) trail.shift();
-    } else if (m === 'ball') {
-      player.vy += BALL_GRAV * gd; player.vy = Math.max(-BALL_MAX, Math.min(BALL_MAX, player.vy)); player.y += player.vy;
-      if (player.y + s >= GROUND) { player.y = GROUND - s; if (gd > 0) { player.vy = 0; player.onGround = true; } }
-      else if (player.y <= CEIL) { player.y = CEIL; if (gd < 0) { player.vy = 0; player.onGround = true; } }
-      else player.onGround = false;
-      player.rot += 0.2 * gd;
-    } else if (m === 'ufo') {
-      player.vy += UFO_GRAV * gd; player.vy = Math.max(-UFO_MAX, Math.min(UFO_MAX, player.vy)); player.y += player.vy;
-      if (player.y + s > GROUND) { player.y = GROUND - s; player.vy = 0; } if (player.y < CEIL) { player.y = CEIL; player.vy = 0; }
-      player.rot = player.vy * 0.04;
-    } else if (m === 'spider') {
-      player.y = gd > 0 ? GROUND - s : CEIL;
-    } else if (m === 'swing') {
-      player.vy += SWING_GRAV * (hold ? -1 : 1); player.vy = Math.max(-SWING_MAX, Math.min(SWING_MAX, player.vy)); player.y += player.vy;
-      if (player.y + s > GROUND) { player.y = GROUND - s; player.vy = 0; } if (player.y < CEIL) { player.y = CEIL; player.vy = 0; }
-      player.rot = player.vy * 0.05;
-    }
-  }
-
+  const fullH = GROUND - CEIL;
   for (const o of obstacles) {
     o.x -= speed;
-    if (o.type === 'spike') {
-      const hy = o.ceil ? CEIL : GROUND - o.h + 10;
-      if (aabb(player.x + 8, player.y + 8, s - 16, s - 16, o.x + 6, hy, o.w - 12, o.h - 10)) die();
-    } else if (o.type === 'block') {
-      const topY = GROUND - o.h; if (aabb(player.x, player.y, s, s, o.x, topY, o.w, o.h) && player.y + s > topY + 12) die();
-    } else if (o.type === 'bar') {
-      if (aabb(player.x + 6, player.y + 6, s - 12, s - 12, o.x, o.y, o.w, o.h)) die();
+    if (o.type === 'spike' || o.type === 'block' || o.type === 'bar') {
+      for (const p of players) if (hitsHazard(p, o)) { die(); break; }
     } else if (o.type === 'portal') {
-      const py = (GROUND + CEIL) / 2 - o.h / 2; if (!o.used && aabb(player.x, player.y, s, s, o.x, py, o.w, o.h)) { o.used = true; modeIndex = o.toIdx; switchMode(o.to); }
+      if (!o.used && players.some(p => aabb(p.x, p.y, p.size, p.size, o.x, CEIL, o.w, fullH))) { o.used = true; modeIndex = o.toIdx; switchMode(o.to); }
+    } else if (o.type === 'dual') {
+      if (!o.used && players.some(p => aabb(p.x, p.y, p.size, p.size, o.x, CEIL, o.w, fullH))) { o.used = true; toggleDual(); }
     } else if (o.type === 'grav') {
-      if (!o.used && aabb(player.x, player.y, s, s, o.x, CEIL, o.w, GROUND - CEIL)) { o.used = true; player.gravityDir *= -1; player.onGround = false; burst(player.x + s / 2, player.y + s / 2, 210, 18); }
+      if (!o.used && players.some(p => aabb(p.x, p.y, p.size, p.size, o.x, CEIL, o.w, fullH))) { o.used = true; for (const p of players) { p.gravityDir *= -1; p.onGround = false; } burst(player.x + player.size / 2, player.y + player.size / 2, 210, 18); }
     } else if (o.type === 'size') {
-      if (!o.used && aabb(player.x, player.y, s, s, o.x, CEIL, o.w, GROUND - CEIL)) { o.used = true; setSize(BASE_SIZE * o.scale); burst(player.x + s / 2, player.y + s / 2, o.scale < 1 ? 150 : 285, 18); }
+      if (!o.used && players.some(p => aabb(p.x, p.y, p.size, p.size, o.x, CEIL, o.w, fullH))) { o.used = true; for (const p of players) setSize(p, BASE_SIZE * o.scale); burst(player.x + player.size / 2, player.y + player.size / 2, o.scale < 1 ? 150 : 285, 18); }
     } else if (o.type === 'speed') {
-      if (!o.used && o.x <= player.x + s) { o.used = true; speedMult = o.mult; burst(player.x, player.y + s / 2, speedHue(o.mult), 16); }
+      if (!o.used && o.x <= player.x + player.size) { o.used = true; speedMult = o.mult; burst(player.x, player.y + player.size / 2, speedHue(o.mult), 16); }
     } else if (o.type === 'pad') {
-      if (!o.used && aabb(player.x, player.y, s, s, o.x, GROUND - 14, o.w, 16)) { o.used = true; activatePad(o); burst(o.x + o.w / 2, GROUND - 10, ORB_COL[o.kind][0], 18); }
+      if (!o.used) for (const p of players) if (aabb(p.x, p.y, p.size, p.size, o.x, GROUND - 14, o.w, 16)) { o.used = true; activatePad(p, o); burst(o.x + o.w / 2, GROUND - 10, ORB_COL[o.kind][0], 18); break; }
     }
   }
   obstacles = obstacles.filter(o => (o.x + (o.w || 40)) > -20);
@@ -561,13 +587,21 @@ function update() {
 
   for (const p of particles) { p.x += p.vx; p.y += p.vy; p.vy += 0.3; p.life -= 0.03; }
   particles = particles.filter(p => p.life > 0);
-  for (const t of trail) t.life -= 0.012; trail = trail.filter(t => t.life > 0);
+  for (const p of players) { for (const t of p.trail) t.life -= 0.012; p.trail = p.trail.filter(t => t.life > 0); }
 
   spawnTimer -= speed; if (spawnTimer <= 0) spawn();
   orbTimer -= speed; if (orbTimer <= 0) { spawnOrb(); orbTimer = 160 + Math.random() * 170; }
   speedTimer -= speed; if (speedTimer <= 0) { spawnSpeed(); speedTimer = 1100 + Math.random() * 700; }
   padTimer -= speed; if (padTimer <= 0) { spawnPad(); padTimer = 240 + Math.random() * 240; }
   gimmickTimer -= speed; if (gimmickTimer <= 0) { spawnGimmick(); gimmickTimer = 900 + Math.random() * 800; }
+}
+
+function hitsHazard(p, o) {
+  const s = p.size;
+  if (o.type === 'spike') { const hy = o.ceil ? CEIL : GROUND - o.h + 10; return aabb(p.x + 8, p.y + 8, s - 16, s - 16, o.x + 6, hy, o.w - 12, o.h - 10); }
+  if (o.type === 'block') { const topY = GROUND - o.h; return aabb(p.x, p.y, s, s, o.x, topY, o.w, o.h) && p.y + s > topY + 12; }
+  if (o.type === 'bar') return aabb(p.x + 6, p.y + 6, s - 12, s - 12, o.x, o.y, o.w, o.h);
+  return false;
 }
 
 // ----- draw ---------------------------------------------------------------
@@ -583,13 +617,13 @@ function draw() {
   ctx.strokeStyle = `hsla(${hue}, 60%, 40%, .22)`;
   for (let x = -(score * speed) % 40; x < W; x += 40) { ctx.beginPath(); ctx.moveTo(x, GROUND); ctx.lineTo(x, H); ctx.stroke(); }
 
-  if (player.mode === 'wave' && trail.length > 1) {
-    ctx.save(); ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-    ctx.shadowColor = `hsl(${hue}, 90%, 65%)`; ctx.shadowBlur = 14;
-    for (let i = 1; i < trail.length; i++) {
-      const a = trail[i - 1], b = trail[i];
+  for (const p of players) {
+    if (p.mode !== 'wave' || p.trail.length < 2) continue;
+    ctx.save(); ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.shadowColor = `hsl(${hue}, 90%, 65%)`; ctx.shadowBlur = 14;
+    for (let i = 1; i < p.trail.length; i++) {
+      const a = p.trail[i - 1], b = p.trail[i];
       ctx.strokeStyle = `hsla(${b.h}, 90%, 68%, ${0.25 + 0.6 * b.life})`;
-      ctx.lineWidth = player.size * 0.5 * b.life + 3;
+      ctx.lineWidth = p.size * 0.5 * b.life + 3;
       ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
     }
     ctx.restore();
@@ -626,10 +660,16 @@ function draw() {
     } else if (o.type === 'bar') {
       ctx.fillStyle = `hsl(${(hue + 60) % 360}, 70%, 55%)`; ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.fillRect(o.x, o.y, o.w, o.h); ctx.strokeRect(o.x, o.y, o.w, o.h);
     } else if (o.type === 'portal') {
-      const py = (GROUND + CEIL) / 2 - o.h / 2, cx = o.x + o.w / 2, cy = py + o.h / 2, pc = (hue + 200) % 360;
-      ctx.strokeStyle = `hsl(${pc}, 90%, 65%)`; ctx.lineWidth = 5; ctx.globalAlpha = .9; ctx.beginPath(); ctx.ellipse(cx, cy, o.w / 2, o.h / 2, 0, 0, Math.PI * 2); ctx.stroke();
-      ctx.globalAlpha = .16; ctx.fillStyle = `hsl(${pc}, 90%, 65%)`; ctx.beginPath(); ctx.ellipse(cx, cy, o.w / 2, o.h / 2, 0, 0, Math.PI * 2); ctx.fill();
+      const cx = o.x + o.w / 2, cy = (GROUND + CEIL) / 2, pc = (hue + 200) % 360;
+      ctx.strokeStyle = `hsl(${pc}, 90%, 65%)`; ctx.lineWidth = 5; ctx.globalAlpha = .9; ctx.beginPath(); ctx.ellipse(cx, cy, o.w / 2, (GROUND - CEIL) / 2, 0, 0, Math.PI * 2); ctx.stroke();
+      ctx.globalAlpha = .16; ctx.fillStyle = `hsl(${pc}, 90%, 65%)`; ctx.beginPath(); ctx.ellipse(cx, cy, o.w / 2, (GROUND - CEIL) / 2, 0, 0, Math.PI * 2); ctx.fill();
       ctx.globalAlpha = 1; ctx.fillStyle = '#fff'; ctx.font = 'bold 13px Segoe UI'; ctx.textAlign = 'center'; ctx.fillText(o.to.toUpperCase(), cx, CEIL + 16);
+    } else if (o.type === 'dual') {
+      const cx = o.x + o.w / 2, cy = (GROUND + CEIL) / 2;
+      ctx.strokeStyle = 'hsl(28, 95%, 60%)'; ctx.lineWidth = 5; ctx.globalAlpha = .9; ctx.beginPath(); ctx.ellipse(cx, cy, o.w / 2, (GROUND - CEIL) / 2, 0, 0, Math.PI * 2); ctx.stroke();
+      ctx.globalAlpha = .14; ctx.fillStyle = 'hsl(28, 95%, 58%)'; ctx.beginPath(); ctx.ellipse(cx, cy, o.w / 2, (GROUND - CEIL) / 2, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.globalAlpha = 1; ctx.fillStyle = '#fff'; ctx.fillRect(cx - 9, cy - 16, 11, 11); ctx.fillRect(cx - 2, cy + 5, 11, 11);
+      ctx.font = 'bold 12px Segoe UI'; ctx.textAlign = 'center'; ctx.fillText('DUAL', cx, CEIL + 14);
     } else if (o.type === 'grav') {
       const cx = o.x + o.w / 2, cy = (GROUND + CEIL) / 2;
       ctx.strokeStyle = 'hsl(210, 95%, 65%)'; ctx.lineWidth = 5; ctx.globalAlpha = .9; ctx.beginPath(); ctx.ellipse(cx, cy, o.w / 2, (GROUND - CEIL) / 2, 0, 0, Math.PI * 2); ctx.stroke();
@@ -664,13 +704,13 @@ function draw() {
 
   for (const p of particles) { ctx.globalAlpha = Math.max(0, p.life); ctx.fillStyle = `hsl(${p.h}, 90%, 65%)`; ctx.fillRect(p.x - 3, p.y - 3, 6, 6); }
   ctx.globalAlpha = 1;
-  if (state !== 'dead') drawPlayer();
+  if (state !== 'dead') for (const p of players) drawPlayer(p);
   if (showHitboxes) drawHitboxes();
 
   ctx.fillStyle = '#dfe6ff'; ctx.font = 'bold 22px Segoe UI, sans-serif'; ctx.textAlign = 'left';
   ctx.fillText('Score: ' + Math.floor(score / 10), 20, 36); ctx.fillText('Best: ' + Math.floor(best / 10), 20, 64);
   ctx.font = 'bold 14px Segoe UI, sans-serif'; ctx.fillStyle = diff.col; ctx.fillText(diff.name.toUpperCase(), 22, 86);
-  ctx.textAlign = 'right'; ctx.fillStyle = `hsl(${(hue + 200) % 360},90%,72%)`; ctx.fillText(player.mode.toUpperCase() + ' MODE', W - 20, 36);
+  ctx.textAlign = 'right'; ctx.fillStyle = `hsl(${(hue + 200) % 360},90%,72%)`; ctx.fillText(player.mode.toUpperCase() + (dual ? ' ×2' : '') + ' MODE', W - 20, 36);
   ctx.fillStyle = `hsl(${speedHue(speedMult)},90%,68%)`; ctx.fillText('x' + speedMult + ' speed', W - 20, 64);
   ctx.fillStyle = botMode ? '#37d6ff' : '#7e8ac0'; ctx.font = 'bold 13px Segoe UI, sans-serif'; ctx.fillText((botMode ? '🤖 BOT' : '🎮 YOU') + ' (E)', W - 20, 88);
   if (showHitboxes) { ctx.fillStyle = '#7fff9f'; ctx.fillText('HITBOXES ON (F)', W - 20, 110); }
@@ -690,7 +730,7 @@ function draw() {
   }
 }
 
-function drawPlayer() {
+function drawPlayer(player) {
   const s = player.size, m = player.mode;
   ctx.save(); ctx.translate(player.x + s / 2, player.y + s / 2); ctx.rotate(player.rot);
   if (player.dashing) { ctx.shadowColor = `hsl(${ORB_COL.dash[0]},90%,60%)`; ctx.shadowBlur = 18; }
@@ -729,19 +769,21 @@ function pointerDown(e) {
 }
 
 function drawHitboxes() {
-  const s = player.size;
   ctx.lineWidth = 1.5;
   for (const o of obstacles) {
     if (o.type === 'spike') { const hy = o.ceil ? CEIL : GROUND - o.h + 10; ctx.strokeStyle = 'rgba(255,70,70,.95)'; ctx.strokeRect(o.x + 6, hy, o.w - 12, o.h - 10); }
     else if (o.type === 'block') { ctx.strokeStyle = 'rgba(255,70,70,.95)'; ctx.strokeRect(o.x, GROUND - o.h, o.w, o.h); }
     else if (o.type === 'bar') { ctx.strokeStyle = 'rgba(255,70,70,.95)'; ctx.strokeRect(o.x, o.y, o.w, o.h); }
     else if (o.type === 'pad') { ctx.strokeStyle = 'rgba(120,255,150,.95)'; ctx.strokeRect(o.x, GROUND - 14, o.w, 16); }
-    else if (o.type === 'grav' || o.type === 'size') { ctx.strokeStyle = 'rgba(120,200,255,.7)'; ctx.strokeRect(o.x, CEIL, o.w, GROUND - CEIL); }
+    else if (o.type === 'grav' || o.type === 'size' || o.type === 'dual') { ctx.strokeStyle = 'rgba(120,200,255,.6)'; ctx.strokeRect(o.x, CEIL, o.w, GROUND - CEIL); }
   }
   ctx.strokeStyle = 'rgba(90,200,255,.95)';
-  for (const o of orbs) { if (o.used) continue; const rr = Math.sqrt((o.r + 6) ** 2 + (s * 0.55) ** 2); ctx.beginPath(); ctx.arc(o.x, o.y, rr, 0, Math.PI * 2); ctx.stroke(); }
-  ctx.strokeStyle = 'rgba(120,255,150,1)'; ctx.strokeRect(player.x, player.y, s, s);
-  ctx.strokeStyle = 'rgba(180,255,180,.7)'; ctx.strokeRect(player.x + 8, player.y + 8, s - 16, s - 16);
+  for (const o of orbs) { if (o.used) continue; const rr = Math.sqrt((o.r + 6) ** 2 + (BASE_SIZE * 0.55) ** 2); ctx.beginPath(); ctx.arc(o.x, o.y, rr, 0, Math.PI * 2); ctx.stroke(); }
+  for (const p of players) {
+    const s = p.size;
+    ctx.strokeStyle = 'rgba(120,255,150,1)'; ctx.strokeRect(p.x, p.y, s, s);
+    ctx.strokeStyle = 'rgba(180,255,180,.7)'; ctx.strokeRect(p.x + 8, p.y + 8, s - 16, s - 16);
+  }
 }
 
 function loop() { update(); draw(); requestAnimationFrame(loop); }
@@ -752,7 +794,7 @@ function resize() {
   const h = Math.max(320, Math.min(window.innerHeight, 1080));
   cv.width = w; cv.height = h;
   W = w; H = h; GROUND = H - 60;
-  if (player && GROUND_MODES.has(player.mode) && player.gravityDir > 0) player.y = Math.min(player.y, GROUND - player.size);
+  if (players) for (const p of players) if (GROUND_MODES.has(p.mode) && p.gravityDir > 0) p.y = Math.min(p.y, GROUND - p.size);
 }
 window.addEventListener('resize', resize);
 
@@ -774,7 +816,6 @@ document.getElementById('infoClose').addEventListener('click', closeInfo);
 window.addEventListener('blur', release);
 
 // ----- settings menu ------------------------------------------------------
-// generic checkbox group: items are {key,label}; get/set read & write the setting
 function checkboxGroup(containerId, items, getVal, setVal) {
   const box = document.getElementById(containerId); box.innerHTML = '';
   items.forEach(({ key, label }) => {
@@ -786,7 +827,6 @@ function checkboxGroup(containerId, items, getVal, setVal) {
   });
 }
 function buildSettings() {
-  // modes need at least one enabled, so they get bespoke handling
   const box = document.getElementById('setModes'); box.innerHTML = '';
   MODES.forEach(m => {
     const lab = document.createElement('label');
@@ -802,8 +842,8 @@ function buildSettings() {
   checkboxGroup('setOrbs', ORB_KINDS.map(k => ({ key: k, label: k.toUpperCase() })), k => settings.orbs[k], (k, v) => settings.orbs[k] = v);
   checkboxGroup('setPads', PAD_KINDS.map(k => ({ key: k, label: k.toUpperCase() })), k => settings.pads[k], (k, v) => settings.pads[k] = v);
   checkboxGroup('setPortals', [
-    { key: 'mini', label: 'Mini portal' }, { key: 'big', label: 'Big portal' },
-    { key: 'grav', label: 'Gravity portal' }, { key: 'speed', label: 'Speed portals' },
+    { key: 'mini', label: 'Mini portal' }, { key: 'big', label: 'Big portal' }, { key: 'grav', label: 'Gravity portal' },
+    { key: 'dual', label: 'Dual portal' }, { key: 'speed', label: 'Speed portals' },
   ], k => settings[k], (k, v) => settings[k] = v);
 }
 function openSettings() { settingsOpen = true; buildSettings(); settingsEl.style.display = 'flex'; }
