@@ -222,7 +222,7 @@ function getBest() { return bestFor(diff); }
 // point latches the run as tainted, so the score still won't save after turning it off
 function saveable() { return !tainted; }
 
-let player, players, dual, obstacles, orbs, particles, baseSpeed, speedMult, speed, score, state, spawnTimer, orbTimer, speedTimer, padTimer, gimmickTimer, hue, modeIndex, lastModeSwitch, grace, lastGapTop, lastSpacing;
+let player, players, dual, obstacles, orbs, particles, baseSpeed, speedMult, speed, score, state, spawnTimer, orbTimer, speedTimer, padTimer, gimmickTimer, hue, modeIndex, lastModeSwitch, grace, lastGapTop, lastSpacing, camZoom, camY;
 let holding = false, effHold = false, infoOpen = false, settingsOpen = false, showHitboxes = false, botMode = false;
 
 const GRAVITY = 0.9, JUMP = -15;
@@ -240,7 +240,7 @@ const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 // a player rides gravityDir +1 (floor) or -1 (ceiling, the dual mirror)
 function makePlayer(gravityDir) {
   return { x: 150, y: gravityDir > 0 ? GROUND - BASE_SIZE : CEIL, size: BASE_SIZE, vy: 0, onGround: true, rot: 0,
-    mode: 'cube', gravityDir, holdTime: 0, dashing: false, dashT: 0, dashY: 0, trail: [], gravMul: 1 };
+    mode: 'cube', gravityDir, holdTime: 0, dashing: false, dashT: 0, dashY: 0, trail: [], gravMul: 1, waveMul: 1 };
 }
 
 function reset() {
@@ -249,6 +249,7 @@ function reset() {
   baseSpeed = diff.speed; speedMult = 1.0; speed = baseSpeed;
   score = 0; hue = 200; spawnTimer = 220; orbTimer = 90; speedTimer = 1200; padTimer = 180; gimmickTimer = 540;
   modeIndex = 0; lastModeSwitch = 0; grace = 0; lastGapTop = (CEIL + GROUND) / 2; lastSpacing = 260;
+  camZoom = 1; camY = player.y + player.size / 2;
   tainted = false; state = 'play';
 }
 
@@ -312,13 +313,15 @@ function setSize(p, ns) {
   if (p.gravityDir > 0) p.y += (p.size - ns);   // keep bottom edge
   p.size = ns;
 }
-// mini portals stack: the first one shrinks you & makes gravity 1.5x heavier,
-// each further mini shrinks you more & multiplies gravity by another 1.2x
+// mini portals stack: the first one shrinks you & makes gravity 1.5x heavier;
+// each further mini shrinks you more & multiplies gravity by 1.2x. Every mini also
+// makes wave fly up/down 1.2x faster (capped at 5x).
 function applyMini(p) {
+  p.waveMul = Math.min(5, p.waveMul * 1.2);
   if (p.gravMul <= 1.0001) { setSize(p, BASE_SIZE * 0.6); p.gravMul = 1.5; }
   else { setSize(p, Math.max(BASE_SIZE * 0.32, p.size * 0.82)); p.gravMul = Math.min(3, p.gravMul * 1.2); }
 }
-function resetSize(p) { setSize(p, BASE_SIZE); p.gravMul = 1; }
+function resetSize(p) { setSize(p, BASE_SIZE); p.gravMul = 1; p.waveMul = 1; }
 
 // next enabled mode after idx (skips modes turned off in Settings); returns idx if none other
 function nextMode(idx) {
@@ -328,7 +331,8 @@ function nextMode(idx) {
 
 // place a player for a freshly-entered mode, on its surface (floor for +gd, ceiling for -gd)
 function placeForMode(p, to) {
-  p.vy = 0; p.holdTime = 0; p.dashing = false; p.size = BASE_SIZE; p.gravMul = 1; p.trail = [];
+  // keep size / gravity / wave-speed across mode changes
+  p.vy = 0; p.holdTime = 0; p.dashing = false; p.trail = [];
   if (GROUND_MODES.has(to)) { p.onGround = false; p.rot = 0; p.y = p.gravityDir > 0 ? GROUND - p.size : CEIL; }
   else if (to === 'spider' || to === 'ball') { p.onGround = true; p.y = p.gravityDir > 0 ? GROUND - p.size : CEIL; }
   else p.y = (CEIL + GROUND) / 2 - p.size / 2 - p.gravityDir * 60;   // air modes start offset by lane
@@ -347,7 +351,7 @@ function switchMode(to) {
 function toggleDual() {
   if (!dual) {
     dual = true;
-    const p2 = makePlayer(-1); p2.mode = player.mode; p2.x = player.x; placeForMode(p2, player.mode);
+    const p2 = makePlayer(-1); p2.mode = player.mode; p2.x = player.x; p2.size = player.size; p2.gravMul = player.gravMul; p2.waveMul = player.waveMul; placeForMode(p2, player.mode);
     players = [player, p2];
     burst(p2.x + p2.size / 2, p2.y + p2.size / 2, (hue + 90) % 360, 26);
   } else {
@@ -596,7 +600,7 @@ function updatePlayer(p, hold) {
     const thrust = gm > 1.0001 ? MINI_SHIP_THRUST : SHIP_THRUST;
     p.vy += (hold ? -thrust : SHIP_GRAV * gm) * gd; p.vy = clamp(p.vy, -SHIP_MAX, SHIP_MAX); p.y += p.vy; clampSurface(p, s); p.rot = p.vy * 0.05 * gd;
   } else if (m === 'wave') {
-    p.vy = (hold ? -WAVE_SPEED : WAVE_SPEED) * gd; p.y += p.vy; p.rot = (hold ? -1 : 1) * gd * Math.PI / 4;
+    p.vy = (hold ? -WAVE_SPEED : WAVE_SPEED) * gd * p.waveMul; p.y += p.vy; p.rot = (hold ? -1 : 1) * gd * Math.PI / 4;
     if (p.y + s > GROUND) p.y = GROUND - s; if (p.y < CEIL) p.y = CEIL;
     p.trail.push({ x: p.x + s / 2, y: p.y + s / 2, life: 1, h: hue }); if (p.trail.length > 260) p.trail.shift();
   } else if (m === 'ball') {
@@ -626,6 +630,9 @@ function update() {
   if (botMode) { const ah = autoPilot(); if (ah !== null) hold = holding || ah; }
   effHold = hold;
   for (const p of players) updatePlayer(p, hold);
+  // camera zooms in as the cube shrinks, and smoothly follows the players
+  const tz = clamp(BASE_SIZE / player.size, 1, 1.8); camZoom += (tz - camZoom) * 0.12;
+  let fy = 0; for (const p of players) fy += p.y + p.size / 2; camY += (fy / players.length - camY) * 0.12;
 
   const fullH = GROUND - CEIL;
   for (const o of obstacles) {
@@ -670,6 +677,9 @@ function hitsHazard(p, o) {
 
 // ----- draw ---------------------------------------------------------------
 function draw() {
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  const z = camZoom, cx = clamp(player.x + player.size / 2, W / (2 * z), W - W / (2 * z)), cy = clamp(camY, H / (2 * z), H - H / (2 * z));
+  ctx.save(); ctx.translate(W / 2, H / 2); ctx.scale(z, z); ctx.translate(-cx, -cy);   // camera (no-op at zoom 1)
   const g = ctx.createLinearGradient(0, 0, 0, H);
   g.addColorStop(0, `hsl(${(hue + 180) % 360}, 50%, 12%)`); g.addColorStop(1, `hsl(${hue}, 45%, 8%)`);
   ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
@@ -771,6 +781,7 @@ function draw() {
   ctx.globalAlpha = 1;
   if (state !== 'dead') for (const p of players) drawPlayer(p);
   if (showHitboxes) drawHitboxes();
+  ctx.restore();   // end camera transform — HUD/overlays draw in fixed screen space
 
   ctx.fillStyle = '#dfe6ff'; ctx.font = 'bold 22px Segoe UI, sans-serif'; ctx.textAlign = 'left';
   ctx.fillText('Score: ' + Math.floor(score / 10), 20, 36); ctx.fillText('Best: ' + Math.floor(getBest() / 10), 20, 64);
