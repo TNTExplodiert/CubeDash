@@ -111,9 +111,13 @@
   <h2>⚙ Settings</h2>
   <h3>Game modes that appear</h3>
   <div id="setModes" class="grid"></div>
-  <h3>Gimmicks</h3>
-  <label><input type="checkbox" id="setSpeed"> Speed-change portals</label>
-  <p style="color:#8a96cc;font-size:13px;margin-top:14px">Cube always starts the run. Changes are saved automatically.</p>
+  <h3>Orbs that appear</h3>
+  <div id="setOrbs" class="grid"></div>
+  <h3>Pads that appear</h3>
+  <div id="setPads" class="grid"></div>
+  <h3>Portals &amp; speed</h3>
+  <div id="setPortals" class="grid"></div>
+  <p style="color:#8a96cc;font-size:13px;margin-top:14px">Cube always starts the run. Gravity portals always keep ~4 blocks of clear space around them. Changes are saved automatically.</p>
   <button id="setClose">✕ Close</button>
 </div></div>
 <script>
@@ -133,6 +137,8 @@ const MODE_LEN = 1100;
 
 const ORB_COL = { yellow: [50, 100, 62], pink: [320, 90, 68], red: [0, 90, 58], green: [135, 80, 52],
   black: [0, 0, 16], spider: [275, 75, 62], gravity: [210, 95, 62], dash: [150, 85, 52] };
+const ORB_KINDS = ['yellow', 'pink', 'red', 'black', 'green', 'spider', 'gravity', 'dash'];
+const PAD_KINDS = ['yellow', 'pink', 'red', 'spider', 'gravity'];
 const SPEEDS = [0.8, 1.0, 1.3, 1.6, 2.0];
 function speedHue(m) { return m < 1 ? 28 : m < 1.2 ? 190 : m < 1.5 ? 135 : m < 1.8 ? 320 : 0; }
 
@@ -153,12 +159,19 @@ let diff = DIFFS[2];
 // high score persists in localStorage
 let best = 0; try { best = parseInt(localStorage.getItem('cubeDashBest')) || 0; } catch (e) {}
 
-// settings: which modes can appear + whether speed portals appear
-let settings = { modes: {}, speed: true };
+// settings: which modes / orbs / pads / portals can appear
+let settings = { modes: {}, orbs: {}, pads: {}, speed: true, mini: true, big: true, grav: true };
 MODES.forEach(m => settings.modes[m] = true);
+ORB_KINDS.forEach(k => settings.orbs[k] = true);
+PAD_KINDS.forEach(k => settings.pads[k] = true);
 try {
   const s = JSON.parse(localStorage.getItem('cubeDashSettings'));
-  if (s) { if (s.modes) MODES.forEach(m => { if (typeof s.modes[m] === 'boolean') settings.modes[m] = s.modes[m]; }); if (typeof s.speed === 'boolean') settings.speed = s.speed; }
+  if (s) {
+    if (s.modes) MODES.forEach(m => { if (typeof s.modes[m] === 'boolean') settings.modes[m] = s.modes[m]; });
+    if (s.orbs) ORB_KINDS.forEach(k => { if (typeof s.orbs[k] === 'boolean') settings.orbs[k] = s.orbs[k]; });
+    if (s.pads) PAD_KINDS.forEach(k => { if (typeof s.pads[k] === 'boolean') settings.pads[k] = s.pads[k]; });
+    for (const k of ['speed', 'mini', 'big', 'grav']) if (typeof s[k] === 'boolean') settings[k] = s[k];
+  }
 } catch (e) {}
 function saveSettings() { try { localStorage.setItem('cubeDashSettings', JSON.stringify(settings)); } catch (e) {} }
 
@@ -321,7 +334,8 @@ function nextSpacing() {
 function spawnOrb() {
   const m = player.mode;
   if (m === 'spider') return;
-  const kinds = GRAV_MODES.has(m) ? ['yellow', 'pink', 'red', 'black', 'green', 'spider', 'gravity', 'dash'] : ['gravity', 'dash'];
+  const kinds = (GRAV_MODES.has(m) ? ORB_KINDS : ['gravity', 'dash']).filter(k => settings.orbs[k]);
+  if (!kinds.length) return;
   const y = CEIL + 40 + Math.random() * (GROUND - CEIL - 80);
   orbs.push({ kind: kinds[Math.floor(Math.random() * kinds.length)], x: W + 40, y, r: 17, used: false });
 }
@@ -333,21 +347,36 @@ function spawnSpeed() {
   obstacles.push({ type: 'speed', x: W + 40, mult: opts[Math.floor(Math.random() * opts.length)], used: false });
 }
 
-// gravity & size portals appear now and then
+// remove ground hazards within r px of x (keeps a clear zone around gravity portals)
+function clearSpikesNear(x, r) {
+  obstacles = obstacles.filter(o => !((o.type === 'spike' || o.type === 'block') && Math.abs(o.x + (o.w || 40) / 2 - x) < r));
+}
+
+// gravity & size portals appear now and then (respecting the Settings toggles)
 function spawnGimmick() {
   const m = player.mode, gdMode = (m === 'cube' || m === 'robot' || m === 'ball' || m === 'ufo');
-  if (Math.random() < 0.5 && gdMode) {
+  const normalSize = player.size > BASE_SIZE * 0.8;
+  const opts = [];
+  if (settings.grav && gdMode) opts.push('grav');
+  if (settings.mini && normalSize) opts.push('mini');   // shrink only when at normal size
+  if (settings.big && !normalSize) opts.push('big');    // restore only when shrunk
+  if (!opts.length) return;
+  const pick = opts[Math.floor(Math.random() * opts.length)];
+  if (pick === 'grav') {
+    const R = 170;   // ~4 blocks of clear space on each side of the gravity portal
+    clearSpikesNear(W + 40 + 15, R);
+    spawnTimer = Math.max(spawnTimer, R + 30);   // keep the next hazard clear of it too
     obstacles.push({ type: 'grav', x: W + 40, w: 30, h: GROUND - CEIL, used: false });
   } else {
-    const mini = player.size > BASE_SIZE * 0.8 ? true : Math.random() < 0.4;   // shrink if normal, else maybe restore
-    obstacles.push({ type: 'size', x: W + 40, w: 30, scale: mini ? 0.6 : 1.0, used: false });
+    obstacles.push({ type: 'size', x: W + 40, w: 30, scale: pick === 'mini' ? 0.6 : 1.0, used: false });
   }
 }
 
 // pads sit on the floor and auto-activate on contact (no tap needed), GD-style
 function spawnPad() {
   if (diff.inv || !GRAV_MODES.has(player.mode)) return;
-  const kinds = ['yellow', 'pink', 'red', 'spider', 'gravity'];
+  const kinds = PAD_KINDS.filter(k => settings.pads[k]);
+  if (!kinds.length) return;
   obstacles.push({ type: 'pad', kind: kinds[Math.floor(Math.random() * kinds.length)], x: W + 40, w: 48, used: false });
 }
 function activatePad(o) {
@@ -745,25 +774,41 @@ document.getElementById('infoClose').addEventListener('click', closeInfo);
 window.addEventListener('blur', release);
 
 // ----- settings menu ------------------------------------------------------
+// generic checkbox group: items are {key,label}; get/set read & write the setting
+function checkboxGroup(containerId, items, getVal, setVal) {
+  const box = document.getElementById(containerId); box.innerHTML = '';
+  items.forEach(({ key, label }) => {
+    const lab = document.createElement('label');
+    const cb = document.createElement('input'); cb.type = 'checkbox'; cb.checked = !!getVal(key);
+    cb.addEventListener('change', () => { setVal(key, cb.checked); saveSettings(); });
+    lab.appendChild(cb); lab.appendChild(document.createTextNode(' ' + label));
+    box.appendChild(lab);
+  });
+}
 function buildSettings() {
+  // modes need at least one enabled, so they get bespoke handling
   const box = document.getElementById('setModes'); box.innerHTML = '';
   MODES.forEach(m => {
-    const label = document.createElement('label');
+    const lab = document.createElement('label');
     const cb = document.createElement('input'); cb.type = 'checkbox'; cb.checked = !!settings.modes[m];
     cb.addEventListener('change', () => {
       settings.modes[m] = cb.checked;
       if (!MODES.some(x => settings.modes[x])) { settings.modes['cube'] = true; buildSettings(); }
       saveSettings();
     });
-    label.appendChild(cb); label.appendChild(document.createTextNode(' ' + m.toUpperCase()));
-    box.appendChild(label);
+    lab.appendChild(cb); lab.appendChild(document.createTextNode(' ' + m.toUpperCase()));
+    box.appendChild(lab);
   });
-  const sp = document.getElementById('setSpeed'); sp.checked = settings.speed;
+  checkboxGroup('setOrbs', ORB_KINDS.map(k => ({ key: k, label: k.toUpperCase() })), k => settings.orbs[k], (k, v) => settings.orbs[k] = v);
+  checkboxGroup('setPads', PAD_KINDS.map(k => ({ key: k, label: k.toUpperCase() })), k => settings.pads[k], (k, v) => settings.pads[k] = v);
+  checkboxGroup('setPortals', [
+    { key: 'mini', label: 'Mini portal' }, { key: 'big', label: 'Big portal' },
+    { key: 'grav', label: 'Gravity portal' }, { key: 'speed', label: 'Speed portals' },
+  ], k => settings[k], (k, v) => settings[k] = v);
 }
 function openSettings() { settingsOpen = true; buildSettings(); settingsEl.style.display = 'flex'; }
 function closeSettings() { settingsOpen = false; settingsEl.style.display = 'none'; cv.focus(); }
 document.getElementById('setClose').addEventListener('click', closeSettings);
-document.getElementById('setSpeed').addEventListener('change', e => { settings.speed = e.target.checked; saveSettings(); });
 document.getElementById('setBtn').addEventListener('click', openSettings);
 
 // ----- difficulty menu ----------------------------------------------------
