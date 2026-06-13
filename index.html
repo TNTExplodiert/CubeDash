@@ -364,26 +364,28 @@ function spawn() {
     lastModeSwitch = score; spawnTimer = nextSpacing(); return;
   }
   const mini = player.gravMul > 1.0001;   // once mini, never spawn double spikes
+  // heavier gravity = lower jump, so scale wall/spike height down to stay clearable
+  const hs = 1 / player.gravMul, SH = 40 * hs;
   if (GROUND_MODES.has(player.mode)) {
     const sp = settings.spikes, bl = settings.blocks, r = Math.random();
-    const block = () => { const bh = 40 + Math.floor(Math.random() * 2) * 40; obstacles.push({ type: 'block', x: W + 40, w: 50, h: bh, ceil: false }); };
-    if (sp && !mini && r < diff.dbl) { obstacles.push({ type: 'spike', x: W + 40, w: 40, h: 40, ceil: false }); obstacles.push({ type: 'spike', x: W + 84, w: 40, h: 40, ceil: false }); }
+    const block = () => { const bh = (40 + Math.floor(Math.random() * 2) * 40) * hs; obstacles.push({ type: 'block', x: W + 40, w: 50, h: bh, ceil: false }); };
+    if (sp && !mini && r < diff.dbl) { obstacles.push({ type: 'spike', x: W + 40, w: 40, h: SH, ceil: false }); obstacles.push({ type: 'spike', x: W + 84, w: 40, h: SH, ceil: false }); }
     else if (bl && r < diff.dbl + 0.13) block();
-    else if (sp) obstacles.push({ type: 'spike', x: W + 40, w: 40, h: 40, ceil: false });
+    else if (sp) obstacles.push({ type: 'spike', x: W + 40, w: 40, h: SH, ceil: false });
     else if (bl) block();   // spikes off but blocks on: still give the ground something
     // roof parkour: hanging spikes from the ceiling (the dual mirror & inverted players dodge these)
     if (sp && Math.random() < diff.ceil) {
       const cx = W + 40 + (Math.random() < 0.5 ? 90 : 0);
-      if (mini || Math.random() < 0.7) obstacles.push({ type: 'spike', x: cx, w: 40, h: 40, ceil: true });
-      else { obstacles.push({ type: 'spike', x: cx, w: 40, h: 40, ceil: true }); obstacles.push({ type: 'spike', x: cx + 44, w: 40, h: 40, ceil: true }); }
+      if (mini || Math.random() < 0.7) obstacles.push({ type: 'spike', x: cx, w: 40, h: SH, ceil: true });
+      else { obstacles.push({ type: 'spike', x: cx, w: 40, h: SH, ceil: true }); obstacles.push({ type: 'spike', x: cx + 44, w: 40, h: SH, ceil: true }); }
     }
   } else if (player.mode === 'ball') {
     // ball rolls on floor/ceiling and flips to dodge spikes — put spikes on ONE
     // surface per spawn so the opposite surface is always a safe place to be
     if (settings.spikes) {
       const ceil = Math.random() < 0.5;
-      obstacles.push({ type: 'spike', x: W + 40, w: 40, h: 40, ceil });
-      if (!mini && Math.random() < diff.dbl) obstacles.push({ type: 'spike', x: W + 84, w: 40, h: 40, ceil });
+      obstacles.push({ type: 'spike', x: W + 40, w: 40, h: SH, ceil });
+      if (!mini && Math.random() < diff.dbl) obstacles.push({ type: 'spike', x: W + 84, w: 40, h: SH, ceil });
     }
   } else if (player.mode === 'spider') {
     // spider clings to floor or ceiling, so the gap must touch one of them
