@@ -55,6 +55,26 @@
   #info button, #settings button { margin-top: 18px; background: #4a5ab0; color: #fff; border: none; border-radius: 8px;
     padding: 10px 18px; font-size: 15px; cursor: pointer; }
   #info button:hover, #settings button:hover { background: #5a6ad0; }
+  #chest, #skins { position: fixed; inset: 0; display: none; align-items: center; justify-content: center; background: rgba(6,6,16,.9); z-index: 11; padding: 18px; box-sizing: border-box; }
+  #chest .card, #skins .card { background: #161630; border: 1px solid #3a3a6a; border-radius: 12px; max-width: 660px; width: 100%; padding: 22px 26px; color: #dfe6ff; box-shadow: 0 0 40px rgba(80,120,255,.4); text-align: center; }
+  #chest h2, #skins h2 { margin: 0 0 8px; color: #fff; }
+  #chestBal, #skinBal { color: #9fe6ff; font-weight: 700; margin-bottom: 6px; }
+  #reelWrap { position: relative; height: 116px; overflow: hidden; border: 1px solid #3a3a6a; border-radius: 10px; background: #0e0e22; margin: 12px 0; }
+  #reelMarker { position: absolute; left: 50%; top: 0; bottom: 0; width: 3px; margin-left: -1.5px; background: #ffd23d; box-shadow: 0 0 10px #ffd23d; z-index: 2; }
+  #reel { display: flex; height: 100%; align-items: center; will-change: transform; }
+  #reel .ri { width: 96px; height: 96px; margin: 0 4px; flex: 0 0 auto; border-radius: 8px; background: #14142e; border-bottom: 5px solid #555; display: flex; align-items: center; justify-content: center; box-sizing: border-box; }
+  #reel .ri .cube { width: 52px; height: 52px; border-radius: 8px; border: 2px solid rgba(255,255,255,.8); }
+  #chestResult { min-height: 26px; font-size: 18px; margin: 6px 0; }
+  #chest button, #skins button { margin: 8px 6px 0; background: #4a5ab0; color: #fff; border: none; border-radius: 8px; padding: 10px 16px; font-size: 15px; cursor: pointer; }
+  #chest button:hover, #skins button:hover { background: #5a6ad0; }
+  #chest button:disabled { opacity: .4; cursor: default; }
+  #skinGrid { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; max-height: 60vh; overflow: auto; margin-top: 8px; }
+  #skinGrid .sk { width: 92px; padding: 8px; border-radius: 10px; background: #11112a; border: 2px solid #333; cursor: pointer; }
+  #skinGrid .sk.equipped { border-color: #43e06a; box-shadow: 0 0 12px rgba(67,224,106,.5); }
+  #skinGrid .sk.locked { opacity: .4; cursor: default; }
+  #skinGrid .sk .cube { width: 48px; height: 48px; margin: 0 auto 6px; border-radius: 8px; border: 2px solid rgba(255,255,255,.7); }
+  #skinGrid .sk .nm { font-size: 12px; font-weight: 700; }
+  #skinGrid .sk .st { font-size: 11px; opacity: .7; }
   #settings .grid { display: flex; flex-wrap: wrap; }
   #settings label { display: inline-flex; align-items: center; gap: 7px; font-size: 14px; margin: 5px 14px 5px 0; cursor: pointer; min-width: 110px; }
   #settings input { width: 17px; height: 17px; accent-color: #6a7ad0; }
@@ -70,6 +90,8 @@
   <p>Choose your difficulty</p>
   <div id="diffBtns"></div>
   <button id="setBtn" class="mbtn">⚙ Settings</button>
+  <button id="skinsBtn" class="mbtn">🎨 Skins</button>
+  <button id="crateBtn" class="mbtn">🎁 Open Crate <span id="menuOrbs">(0 ◆)</span></button>
   <button id="devBtn" class="mbtn">📱 Gerät: <span id="devLabel">—</span> (ändern)</button>
   <span class="foot">Best: <b id="menuBest">0</b> &nbsp;·&nbsp; tap = jump · hold = fly · E = bot · F = hitboxes · C = noclip · Esc = menu</span>
 </div></div>
@@ -132,6 +154,8 @@
     <li><span class="dot" style="background:hsl(50,100%,62%)"></span><b>Yellow</b> — bounce up · <span class="dot" style="background:hsl(320,90%,68%)"></span><b>Pink</b> — small · <span class="dot" style="background:hsl(0,90%,58%)"></span><b>Red</b> — big launch</li>
     <li><span class="dot" style="background:hsl(210,95%,62%)"></span><b>Blue</b> — reverse gravity · <span class="dot" style="background:hsl(275,75%,62%)"></span><b>Spider</b> — flip + teleport</li>
   </ul>
+  <h3>Orbs &amp; Crates</h3>
+  <p>Earn <b>1 orb per point</b> on a valid run (no bot, no noclip). Spend <b>1000 orbs</b> to open a crate (from Game Over or the menu) and unbox a <b>skin</b> — equip skins in the 🎨 Skins menu. Orbs are saved automatically.</p>
   <h3>Debug</h3>
   <p>Press <b>F</b> to toggle hitboxes. Press <b>E</b> to switch between playing yourself and watching the bot.</p>
   <button id="infoClose">✕ Close</button>
@@ -152,6 +176,20 @@
   <div id="setLimits" class="grid"></div>
   <p style="color:#8a96cc;font-size:13px;margin-top:14px">Cube always starts the run. Gravity portals always keep ~4 blocks of clear space around them. Changes are saved automatically.</p>
   <button id="setClose">✕ Close</button>
+</div></div>
+<div id="chest"><div class="card">
+  <h2>🎁 Crate Opening</h2>
+  <div id="chestBal"></div>
+  <div id="reelWrap"><div id="reelMarker"></div><div id="reel"></div></div>
+  <div id="chestResult"></div>
+  <button id="chestSpin">Open Crate (1000 ◆)</button>
+  <button id="chestClose">✕ Close</button>
+</div></div>
+<div id="skins"><div class="card">
+  <h2>🎨 Skins</h2>
+  <div id="skinBal"></div>
+  <div id="skinGrid"></div>
+  <button id="skinsClose">✕ Close</button>
 </div></div>
 <script>
 const cv = document.getElementById('c');
@@ -175,6 +213,31 @@ const PAD_KINDS = ['yellow', 'pink', 'red', 'spider', 'gravity'];
 const SPEEDS = [0.8, 1.0, 1.3, 1.6, 2.0];
 function speedHue(m) { return m < 1 ? 28 : m < 1.2 ? 190 : m < 1.5 ? 135 : m < 1.8 ? 320 : 0; }
 
+// ----- skins & crate ------------------------------------------------------
+const RARITY = [
+  { name: 'Common', col: '#9aa7c7' }, { name: 'Uncommon', col: '#4b69ff' }, { name: 'Rare', col: '#8847ff' },
+  { name: 'Epic', col: '#d32ce6' }, { name: 'Legendary', col: '#ffd23d' },
+];
+const SKINS = [
+  { id: 'classic', name: 'Classic', col: 'rainbow', rarity: 0 },
+  { id: 'emerald', name: 'Emerald', col: '#2ecc71', rarity: 1 },
+  { id: 'azure', name: 'Azure', col: '#3498db', rarity: 1 },
+  { id: 'slate', name: 'Slate', col: '#8d99ae', rarity: 1 },
+  { id: 'coral', name: 'Coral', col: '#ff7f6b', rarity: 1 },
+  { id: 'amethyst', name: 'Amethyst', col: '#9b59b6', rarity: 2 },
+  { id: 'sunset', name: 'Sunset', col: '#ff8a3d', rarity: 2 },
+  { id: 'aqua', name: 'Aqua', col: '#1abc9c', rarity: 2 },
+  { id: 'rose', name: 'Rose', col: '#ff5ca8', rarity: 3 },
+  { id: 'crimson', name: 'Crimson', col: '#e74c3c', rarity: 3 },
+  { id: 'gold', name: 'Golden', col: '#ffd23d', rarity: 4 },
+  { id: 'spectrum', name: 'Spectrum', col: 'spectrum', rarity: 4 },
+];
+const RW = { 1: 50, 2: 28, 3: 14, 4: 5 };   // drop weight per rarity
+const CHEST_COST = 1000;
+function skinById(id) { return SKINS.find(s => s.id === id) || SKINS[0]; }
+function weightedPick(pool) { let tot = 0; for (const s of pool) tot += RW[s.rarity]; let r = Math.random() * tot; for (const s of pool) { r -= RW[s.rarity]; if (r <= 0) return s; } return pool[pool.length - 1]; }
+function skinSwatch(sk) { return sk.col === 'rainbow' ? 'linear-gradient(135deg,#ff5c5c,#ffd23d,#43e06a,#37d6ff,#a45cff)' : sk.col === 'spectrum' ? 'conic-gradient(from 0deg,#f55,#fd3,#5e6,#3df,#a5f,#f55)' : sk.col; }
+
 // difficulty presets: speed=start speed, ramp=speed-up rate, dens=obstacle spacing (lower=denser),
 // gap=air-mode gap, ceil=ceiling-spike chance, dbl=double-spike chance. Auto is the bot-only
 // "Tidal"-grade chart: humanly impossible, but the (invincible) bot drives through it.
@@ -194,6 +257,16 @@ let bests = {}; try { bests = JSON.parse(localStorage.getItem('cubeDashBests')) 
 function saveBests() { try { localStorage.setItem('cubeDashBests', JSON.stringify(bests)); } catch (e) {} }
 let device = ''; try { device = localStorage.getItem('cubeDashDevice') || ''; } catch (e) {}
 let noclip = false, tainted = false;   // tainted = bot/noclip was used at any point this run
+
+// orbs currency (saved like cookies), owned/equipped skins, and orbs earned last run
+let orbBank = 0; try { orbBank = parseInt(localStorage.getItem('cubeDashOrbs')) || 0; } catch (e) {}
+let ownedSkins = new Set(['classic']);
+try { const o = JSON.parse(localStorage.getItem('cubeDashSkinsOwned')); if (Array.isArray(o)) { ownedSkins = new Set(o); ownedSkins.add('classic'); } } catch (e) {}
+let equippedSkin = 'classic'; try { equippedSkin = localStorage.getItem('cubeDashSkinEquip') || 'classic'; } catch (e) {}
+let lastEarned = 0;
+function saveOrbs() { try { localStorage.setItem('cubeDashOrbs', String(orbBank)); } catch (e) {} }
+function saveSkins() { try { localStorage.setItem('cubeDashSkinsOwned', JSON.stringify([...ownedSkins])); localStorage.setItem('cubeDashSkinEquip', equippedSkin); } catch (e) {} }
+function skinFill() { const sk = skinById(equippedSkin); return sk.col === 'rainbow' ? `hsl(${hue},85%,60%)` : sk.col === 'spectrum' ? `hsl(${(hue * 4) % 360},90%,62%)` : sk.col; }
 
 // settings: which modes / orbs / pads / portals / hazards can appear, plus mini/big limits
 let settings = { modes: {}, orbs: {}, pads: {}, speed: true, mini: true, big: true, grav: true, dual: true, spikes: true, blocks: true,
@@ -229,7 +302,7 @@ function getBest() { return bestFor(diff); }
 function saveable() { return !tainted; }
 
 let player, players, dual, obstacles, orbs, particles, baseSpeed, speedMult, speed, score, state, spawnTimer, orbTimer, speedTimer, padTimer, gimmickTimer, hue, modeIndex, lastModeSwitch, grace, lastGapTop, lastSpacing;
-let holding = false, effHold = false, infoOpen = false, settingsOpen = false, showHitboxes = false, botMode = false;
+let holding = false, effHold = false, infoOpen = false, settingsOpen = false, showHitboxes = false, botMode = false, chestOpen = false, skinsOpen = false, chestSpinning = false;
 
 const GRAVITY = 0.9, JUMP = -15;
 const ROBOT_JUMP = -12.5, ROBOT_HOLD = 16;
@@ -271,7 +344,7 @@ function jumpNow(p) {
 }
 
 function press() {
-  if (infoOpen || settingsOpen || state === 'menu') return;
+  if (infoOpen || settingsOpen || chestOpen || skinsOpen || state === 'menu') return;
   if (state === 'dead') { reset(); return; }
   holding = true;
   for (const p of players) {
@@ -505,7 +578,7 @@ function activatePad(p, o) {
 function aabb(ax, ay, aw, ah, bx, by, bw, bh) { return ax < bx + bw && ax + aw > bx && ay < by + bh && ay + ah > by; }
 // spikes/blocks shrink with heavier gravity so they stay clearable at the same jump ratio
 function wallH(o, gm) { return o.h / gm; }
-function die() { if (state === 'dead' || grace > 0 || diff.inv || noclip) return; state = 'dead'; if (saveable() && score > getBest()) { bests[bestKeyFor(diff)] = score; saveBests(); } for (const p of players) burst(p.x + p.size / 2, p.y + p.size / 2, hue, 40); }
+function die() { if (state === 'dead' || grace > 0 || diff.inv || noclip) return; state = 'dead'; if (saveable() && score > getBest()) { bests[bestKeyFor(diff)] = score; saveBests(); } lastEarned = saveable() ? Math.floor(score / 10) : 0; if (lastEarned > 0) { orbBank += lastEarned; saveOrbs(); } for (const p of players) burst(p.x + p.size / 2, p.y + p.size / 2, hue, 40); }
 
 function groundLand(p) {
   const s = p.size;
@@ -796,6 +869,7 @@ function draw() {
   let ly = 108; ctx.font = 'bold 12px Segoe UI, sans-serif';
   if (!saveable()) { ctx.fillStyle = '#ffb04a'; ctx.fillText('NO SAVE — ' + (botMode || noclip ? (botMode && noclip ? 'bot+noclip on' : botMode ? 'bot on' : 'noclip on') : 'bot/noclip used') + ' this run', 22, ly); ly += 20; }
   ctx.fillStyle = player.gravMul > 1.0001 ? '#ff9a3d' : '#9fb4ff'; ctx.fillText('GRAVITY ×' + (Math.round(player.gravMul * 100) / 100) + '  (' + (Math.round(GRAVITY * player.gravMul * 100) / 100) + ')', 22, ly);
+  ctx.fillStyle = '#9fe6ff'; ctx.fillText('◆ ' + orbBank + ' orbs', 22, ly + 18);
   ctx.textAlign = 'right'; ctx.fillStyle = `hsl(${(hue + 200) % 360},90%,72%)`; ctx.fillText(player.mode.toUpperCase() + (dual ? ' ×2' : '') + ' MODE', W - 20, 36);
   ctx.fillStyle = `hsl(${speedHue(speedMult)},90%,68%)`; ctx.fillText('x' + speedMult + ' speed', W - 20, 64);
   ctx.fillStyle = botMode ? '#37d6ff' : '#7e8ac0'; ctx.font = 'bold 13px Segoe UI, sans-serif'; ctx.fillText((botMode ? '🤖 BOT' : '🎮 YOU') + ' (E)', W - 20, 88);
@@ -807,15 +881,20 @@ function draw() {
   ctrlBtns.bot.classList.toggle('on', botMode); ctrlBtns.hit.classList.toggle('on', showHitboxes); ctrlBtns.clip.classList.toggle('on', noclip);
 
   if (state === 'dead') {
-    ctx.fillStyle = 'rgba(0,0,0,.55)'; ctx.fillRect(0, 0, W, H);
-    ctx.fillStyle = '#fff'; ctx.textAlign = 'center'; ctx.font = 'bold 48px Segoe UI, sans-serif'; ctx.fillText('GAME OVER', W / 2, H / 2 - 20);
-    ctx.font = '22px Segoe UI, sans-serif'; ctx.fillText('Score: ' + Math.floor(score / 10) + '   •   Best: ' + Math.floor(getBest() / 10), W / 2, H / 2 + 20);
-    ctx.fillStyle = '#9fb4ff'; ctx.fillText('Press SPACE / CLICK to restart', W / 2, H / 2 + 60);
+    ctx.fillStyle = 'rgba(0,0,0,.6)'; ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = '#fff'; ctx.textAlign = 'center'; ctx.font = 'bold 44px Segoe UI, sans-serif'; ctx.fillText('GAME OVER', W / 2, H / 2 - 48);
+    ctx.font = '20px Segoe UI, sans-serif'; ctx.fillText('Score: ' + Math.floor(score / 10) + '   •   Best: ' + Math.floor(getBest() / 10), W / 2, H / 2 - 16);
+    ctx.font = 'bold 16px Segoe UI, sans-serif'; ctx.fillStyle = '#9fe6ff';
+    ctx.fillText(lastEarned > 0 ? '◆ +' + lastEarned + ' orbs   (total ' + orbBank + ')' : '◆ no orbs — invalid run   (total ' + orbBank + ')', W / 2, H / 2 + 10);
+    ctx.fillStyle = '#9fb4ff'; ctx.font = '14px Segoe UI, sans-serif'; ctx.fillText('Press SPACE / CLICK to restart', W / 2, H / 2 + 34);
     ctx.textBaseline = 'middle';
-    for (const [rect, label] of [[infoBtnRect(), 'ⓘ  Info / Help'], [diffBtnRect(), '≡  Difficulty'], [setGOBtnRect(), '⚙  Settings']]) {
-      ctx.fillStyle = 'rgba(74,90,176,.55)'; ctx.strokeStyle = '#9fb4ff'; ctx.lineWidth = 2;
+    const labels = ['ⓘ  Info / Help', '≡  Difficulty', '⚙  Settings', '🎨  Skins'];
+    if (orbBank >= CHEST_COST) labels.push('🎁  Open Crate (1000 ◆)');
+    for (let i = 0; i < labels.length; i++) {
+      const rect = goBtnRect(i);
+      ctx.fillStyle = i === 4 ? 'rgba(176,140,40,.6)' : 'rgba(74,90,176,.55)'; ctx.strokeStyle = i === 4 ? '#ffd23d' : '#9fb4ff'; ctx.lineWidth = 2;
       ctx.fillRect(rect.x, rect.y, rect.w, rect.h); ctx.strokeRect(rect.x, rect.y, rect.w, rect.h);
-      ctx.fillStyle = '#eaf0ff'; ctx.font = 'bold 16px Segoe UI, sans-serif'; ctx.fillText(label, rect.x + rect.w / 2, rect.y + rect.h / 2 + 1);
+      ctx.fillStyle = '#eaf0ff'; ctx.font = 'bold 15px Segoe UI, sans-serif'; ctx.fillText(labels[i], rect.x + rect.w / 2, rect.y + rect.h / 2 + 1);
     }
     ctx.textBaseline = 'alphabetic';
   }
@@ -825,7 +904,7 @@ function drawPlayer(player) {
   const s = player.size, m = player.mode;
   ctx.save(); ctx.translate(player.x + s / 2, player.y + s / 2); ctx.rotate(player.rot);
   if (player.dashing) { ctx.shadowColor = `hsl(${ORB_COL.dash[0]},90%,60%)`; ctx.shadowBlur = 18; }
-  ctx.fillStyle = `hsl(${hue}, 85%, 60%)`; ctx.strokeStyle = '#fff'; ctx.lineWidth = 3;
+  ctx.fillStyle = skinFill(); ctx.strokeStyle = '#fff'; ctx.lineWidth = 3;
   if (m === 'wave') { ctx.beginPath(); ctx.moveTo(-s * .35, -s * .35); ctx.lineTo(s * .35, 0); ctx.lineTo(-s * .35, s * .35); ctx.closePath(); ctx.fill(); ctx.stroke(); }
   else if (m === 'ball') { ctx.beginPath(); ctx.arc(0, 0, s / 2, 0, Math.PI * 2); ctx.fill(); ctx.stroke(); ctx.strokeStyle = 'rgba(255,255,255,.8)'; ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(s / 2, 0); ctx.stroke(); }
   else if (m === 'ship') { ctx.beginPath(); ctx.moveTo(-s / 2, s / 3); ctx.lineTo(s / 2, 0); ctx.lineTo(-s / 2, -s / 3); ctx.closePath(); ctx.fill(); ctx.stroke(); if (effHold) { ctx.fillStyle = `hsl(${(hue + 30) % 360},90%,60%)`; ctx.beginPath(); ctx.moveTo(-s / 2, 0); ctx.lineTo(-s, (Math.random() - .5) * 10); ctx.lineTo(-s / 2, 8); ctx.closePath(); ctx.fill(); } }
@@ -837,9 +916,7 @@ function drawPlayer(player) {
 }
 
 // ----- buttons on the Game Over menu --------------------------------------
-function infoBtnRect() { return { x: W / 2 - 90, y: H / 2 + 80, w: 180, h: 36 }; }
-function diffBtnRect() { return { x: W / 2 - 90, y: H / 2 + 122, w: 180, h: 36 }; }
-function setGOBtnRect() { return { x: W / 2 - 90, y: H / 2 + 164, w: 180, h: 36 }; }
+function goBtnRect(i) { return { x: W / 2 - 120, y: H / 2 + 54 + i * 38, w: 240, h: 32 }; }
 function canvasPos(e) {
   const r = cv.getBoundingClientRect();
   const t = e.changedTouches ? e.changedTouches[0] : e;
@@ -852,9 +929,11 @@ function pointerDown(e) {
   e.preventDefault(); cv.focus();
   if (state === 'dead') {
     const p = canvasPos(e);
-    if (inRect(p, infoBtnRect())) { openInfo(); return; }
-    if (inRect(p, diffBtnRect())) { showMenu(); return; }
-    if (inRect(p, setGOBtnRect())) { openSettings(); return; }
+    if (inRect(p, goBtnRect(0))) { openInfo(); return; }
+    if (inRect(p, goBtnRect(1))) { showMenu(); return; }
+    if (inRect(p, goBtnRect(2))) { openSettings(); return; }
+    if (inRect(p, goBtnRect(3))) { openSkins(); return; }
+    if (orbBank >= CHEST_COST && inRect(p, goBtnRect(4))) { openChestOverlay(); return; }
   }
   press();
 }
@@ -896,7 +975,7 @@ window.addEventListener('resize', resize);
 // ----- input listeners ----------------------------------------------------
 const JUMP_KEYS = new Set(['Space', 'ArrowUp', 'KeyW', 'Enter']);
 function keyDown(e) {
-  if (e.code === 'Escape') { if (settingsOpen) closeSettings(); else if (infoOpen) closeInfo(); else if (state === 'play') showMenu(); return; }
+  if (e.code === 'Escape') { if (chestOpen) closeChest(); else if (skinsOpen) closeSkins(); else if (settingsOpen) closeSettings(); else if (infoOpen) closeInfo(); else if (state === 'play') showMenu(); return; }
   if (e.code === 'KeyF') { showHitboxes = !showHitboxes; return; }
   if (e.code === 'KeyE') { botMode = !botMode; return; }
   if (e.code === 'KeyC') { noclip = !noclip; return; }
@@ -907,7 +986,7 @@ for (const tgt of [window, document, cv]) { tgt.addEventListener('keydown', keyD
 cv.addEventListener('mousedown', pointerDown);
 window.addEventListener('mouseup', release);
 cv.addEventListener('touchstart', e => pointerDown(e), { passive: false });
-window.addEventListener('touchend', e => { if (state !== 'menu' && !infoOpen && !settingsOpen) e.preventDefault(); release(); }, { passive: false });
+window.addEventListener('touchend', e => { if (state !== 'menu' && !infoOpen && !settingsOpen && !chestOpen && !skinsOpen) e.preventDefault(); release(); }, { passive: false });
 document.getElementById('infoClose').addEventListener('click', closeInfo);
 window.addEventListener('blur', release);
 
@@ -968,6 +1047,53 @@ function closeSettings() { settingsOpen = false; settingsEl.style.display = 'non
 document.getElementById('setClose').addEventListener('click', closeSettings);
 document.getElementById('setBtn').addEventListener('click', openSettings);
 
+// ----- crate (CS2-style case opening) -------------------------------------
+const chestEl = document.getElementById('chest'), skinsEl = document.getElementById('skins');
+const reelEl = document.getElementById('reel'), reelWrapEl = document.getElementById('reelWrap'), chestResultEl = document.getElementById('chestResult');
+function reelItemHTML(s) { return `<div class="ri" style="border-bottom-color:${RARITY[s.rarity].col}"><div class="cube" style="background:${skinSwatch(s)}"></div></div>`; }
+function updChestBal() { document.getElementById('chestBal').textContent = '◆ ' + orbBank + ' orbs'; document.getElementById('chestSpin').disabled = orbBank < CHEST_COST || chestSpinning; }
+function openChestOverlay() { chestOpen = true; chestEl.style.display = 'flex'; reelEl.style.transition = 'none'; reelEl.style.transform = 'translateX(0)'; reelEl.innerHTML = ''; chestResultEl.textContent = ''; updChestBal(); }
+function closeChest() { if (chestSpinning) return; chestOpen = false; chestEl.style.display = 'none'; if (state === 'menu') showMenu(); else cv.focus(); }
+function spinChest() {
+  if (orbBank < CHEST_COST || chestSpinning) return;
+  orbBank -= CHEST_COST; saveOrbs(); chestSpinning = true; chestResultEl.textContent = ''; updChestBal();
+  const pool = SKINS.filter(s => s.rarity >= 1), winner = weightedPick(pool);
+  const N = 54, WI = 48, items = [];
+  for (let i = 0; i < N; i++) items.push(i === WI ? winner : weightedPick(pool));
+  reelEl.innerHTML = items.map(reelItemHTML).join('');
+  const itemW = 104, vw = reelWrapEl.clientWidth, offset = (0.2 + Math.random() * 0.6) * 96;
+  const target = -(WI * itemW + offset - vw / 2);
+  reelEl.style.transition = 'none'; reelEl.style.transform = 'translateX(0)'; reelEl.offsetWidth;   // reflow
+  requestAnimationFrame(() => { reelEl.style.transition = 'transform 5.3s cubic-bezier(.05,.7,.1,1)'; reelEl.style.transform = `translateX(${target}px)`; });
+  setTimeout(() => {
+    chestSpinning = false;
+    const isNew = !ownedSkins.has(winner.id); ownedSkins.add(winner.id); saveSkins();
+    chestResultEl.innerHTML = `You unboxed <b style="color:${RARITY[winner.rarity].col}">${winner.name}</b> · ${RARITY[winner.rarity].name}` + (isNew ? ` <span style="color:#43e06a">— NEW!</span>` : ` <span style="color:#9aa7c7">— duplicate</span>`);
+    updChestBal();
+  }, 5450);
+}
+document.getElementById('chestSpin').addEventListener('click', spinChest);
+document.getElementById('chestClose').addEventListener('click', closeChest);
+document.getElementById('crateBtn').addEventListener('click', openChestOverlay);
+
+// ----- skins inventory ----------------------------------------------------
+function buildSkins() {
+  document.getElementById('skinBal').textContent = '◆ ' + orbBank + ' orbs  ·  ' + ownedSkins.size + '/' + SKINS.length + ' skins';
+  const grid = document.getElementById('skinGrid'); grid.innerHTML = '';
+  for (const s of SKINS) {
+    const owned = ownedSkins.has(s.id), eq = equippedSkin === s.id;
+    const d = document.createElement('div');
+    d.className = 'sk ' + (eq ? 'equipped' : owned ? 'owned' : 'locked');
+    d.innerHTML = `<div class="cube" style="background:${skinSwatch(s)}"></div><div class="nm" style="color:${RARITY[s.rarity].col}">${s.name}</div><div class="st">${eq ? 'Equipped' : owned ? 'Equip' : 'Locked'}</div>`;
+    if (owned) d.addEventListener('click', () => { equippedSkin = s.id; saveSkins(); buildSkins(); });
+    grid.appendChild(d);
+  }
+}
+function openSkins() { skinsOpen = true; buildSkins(); skinsEl.style.display = 'flex'; }
+function closeSkins() { skinsOpen = false; skinsEl.style.display = 'none'; if (state === 'menu') showMenu(); else cv.focus(); }
+document.getElementById('skinsClose').addEventListener('click', closeSkins);
+document.getElementById('skinsBtn').addEventListener('click', openSkins);
+
 // ----- device screen ------------------------------------------------------
 const hint = document.getElementById('hint');
 const deviceEl = document.getElementById('device');
@@ -989,7 +1115,7 @@ touchCtrls.querySelectorAll('button').forEach(b => {
 
 // ----- difficulty menu ----------------------------------------------------
 function startGame(d) { diff = d; botMode = !!d.inv; menu.style.display = 'none'; reset(); cv.focus(); window.focus(); }
-function showMenu() { state = 'menu'; menu.style.display = 'flex'; updateDevLabel(); refreshDiffBtns(); document.getElementById('menuBest').textContent = Math.floor(getBest() / 10); }
+function showMenu() { state = 'menu'; menu.style.display = 'flex'; updateDevLabel(); refreshDiffBtns(); document.getElementById('menuBest').textContent = Math.floor(getBest() / 10); document.getElementById('menuOrbs').textContent = '(' + orbBank + ' ◆)'; }
 const diffBtns = document.getElementById('diffBtns');
 const diffEls = [];
 DIFFS.forEach(d => {
