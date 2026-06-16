@@ -301,7 +301,22 @@ function getBest() { return bestFor(diff); }
 // point latches the run as tainted, so the score still won't save after turning it off
 function saveable() { return !tainted; }
 
-let player, players, dual, obstacles, orbs, particles, baseSpeed, speedMult, speed, score, state, spawnTimer, orbTimer, speedTimer, padTimer, gimmickTimer, hue, modeIndex, lastModeSwitch, grace, lastGapTop, lastSpacing;
+// score multiplier: +0.1 per enabled settings toggle, stacked (multiplied) with a
+// difficulty bonus (Hard/Harder/Insane x1.3, Extreme x1.5).
+function computeMult() {
+  let n = 0;
+  for (const k of MODES) if (settings.modes[k]) n++;
+  for (const k of ORB_KINDS) if (settings.orbs[k]) n++;
+  for (const k of PAD_KINDS) if (settings.pads[k]) n++;
+  for (const k of ['mini', 'big', 'grav', 'dual', 'speed', 'spikes', 'blocks']) if (settings[k]) n++;
+  let m = 1 + 0.1 * n;
+  const d = diff.name;
+  if (d === 'Hard' || d === 'Harder' || d === 'Insane') m *= 1.3;
+  else if (d === 'Extreme') m *= 1.5;
+  return m;
+}
+
+let player, players, dual, obstacles, orbs, particles, baseSpeed, speedMult, speed, score, state, spawnTimer, orbTimer, speedTimer, padTimer, gimmickTimer, hue, modeIndex, lastModeSwitch, grace, lastGapTop, lastSpacing, scoreMul;
 let holding = false, effHold = false, infoOpen = false, settingsOpen = false, showHitboxes = false, botMode = false, chestOpen = false, skinsOpen = false, chestSpinning = false;
 
 const GRAVITY = 0.9, JUMP = -15;
@@ -328,7 +343,7 @@ function reset() {
   baseSpeed = diff.speed; speedMult = 1.0; speed = baseSpeed;
   score = 0; hue = 200; spawnTimer = 220; orbTimer = 90; speedTimer = 1200; padTimer = 180; gimmickTimer = 540;
   modeIndex = 0; lastModeSwitch = 0; grace = 0; lastGapTop = (CEIL + GROUND) / 2; lastSpacing = 260;
-  tainted = false; state = 'play';
+  scoreMul = computeMult(); tainted = false; state = 'play';
 }
 
 // ----- input --------------------------------------------------------------
@@ -710,7 +725,7 @@ function update() {
   if (state !== 'play') return;
   if (botMode || noclip) tainted = true;   // latch the run as not-saveable
   baseSpeed += diff.ramp; speed = baseSpeed * speedMult;
-  score += speed / diff.speed;   // faster scrolling = more points per frame
+  score += (speed / diff.speed) * scoreMul;   // faster scrolling + multiplier = more points per frame
   hue = (hue + 0.4) % 360;
   if (grace > 0) grace--;
   let hold = holding;
@@ -870,6 +885,7 @@ function draw() {
   if (!saveable()) { ctx.fillStyle = '#ffb04a'; ctx.fillText('NO SAVE — ' + (botMode || noclip ? (botMode && noclip ? 'bot+noclip on' : botMode ? 'bot on' : 'noclip on') : 'bot/noclip used') + ' this run', 22, ly); ly += 20; }
   ctx.fillStyle = player.gravMul > 1.0001 ? '#ff9a3d' : '#9fb4ff'; ctx.fillText('GRAVITY ×' + (Math.round(player.gravMul * 100) / 100) + '  (' + (Math.round(GRAVITY * player.gravMul * 100) / 100) + ')', 22, ly);
   ctx.fillStyle = '#9fe6ff'; ctx.fillText('◆ ' + orbBank + ' orbs', 22, ly + 18);
+  ctx.fillStyle = '#ffd23d'; ctx.fillText('×' + (Math.round(scoreMul * 10) / 10) + ' score', 22, ly + 36);
   ctx.textAlign = 'right'; ctx.fillStyle = `hsl(${(hue + 200) % 360},90%,72%)`; ctx.fillText(player.mode.toUpperCase() + (dual ? ' ×2' : '') + ' MODE', W - 20, 36);
   ctx.fillStyle = `hsl(${speedHue(speedMult)},90%,68%)`; ctx.fillText('x' + speedMult + ' speed', W - 20, 64);
   ctx.fillStyle = botMode ? '#37d6ff' : '#7e8ac0'; ctx.font = 'bold 13px Segoe UI, sans-serif'; ctx.fillText((botMode ? '🤖 BOT' : '🎮 YOU') + ' (E)', W - 20, 88);
