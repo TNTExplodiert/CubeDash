@@ -669,7 +669,7 @@ function update() {
 
   for (const p of particles) { p.x += p.vx; p.y += p.vy; p.vy += 0.3; p.life -= 0.03; }
   particles = particles.filter(p => p.life > 0);
-  for (const p of players) { for (const t of p.trail) t.life -= 0.012; p.trail = p.trail.filter(t => t.life > 0); }
+  for (const p of players) { for (const t of p.trail) { t.x -= speed; t.life -= 0.012; } p.trail = p.trail.filter(t => t.life > 0); }
 
   spawnTimer -= speed; if (spawnTimer <= 0) spawn();
   orbTimer -= speed; if (orbTimer <= 0) { spawnOrb(); orbTimer = 160 + Math.random() * 170; }
